@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { doc, updateDoc, increment, collection, addDoc } from "firebase/firestore";
+import { doc, updateDoc, increment, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "./WhyThisModal";
@@ -43,6 +43,9 @@ function colorFromString(str) {
 export default function EpisodeCard({ episode }) {
   const { user, profile } = useAuth();
   const [liked, setLiked] = useState(false);
+  const [favorited, setFavorited] = useState(false);
+  const [likeCount, setLikeCount] = useState(episode.likeCount || 0);
+  const [favoriteCount, setFavoriteCount] = useState(episode.favoriteCount || 0);
   const [imgError, setImgError] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -52,21 +55,98 @@ export default function EpisodeCard({ episode }) {
   const initials = (episode.podcastTitle || "?").slice(0, 2).toUpperCase();
   const placeholderBg = colorFromString(episode.podcastTitle);
 
+  // Check existing interactions on mount
+  useEffect(() => {
+    if (!user) return;
+    checkExistingInteractions();
+  }, [user, episode.id]);
+
+  const checkExistingInteractions = async () => {
+    try {
+      const likesQ = query(collection(db, "interactions"),
+        where("userId", "==", user.uid),
+        where("episodeId", "==", episode.id),
+        where("type", "==", "like")
+      );
+      const favsQ = query(collection(db, "interactions"),
+        where("userId", "==", user.uid),
+        where("episodeId", "==", episode.id),
+        where("type", "==", "favorite")
+      );
+      const [likesSnap, favsSnap] = await Promise.all([getDocs(likesQ), getDocs(favsQ)]);
+      setLiked(!likesSnap.empty);
+      setFavorited(!favsSnap.empty);
+    } catch (err) {
+      // Silently fail — interactions check is non-critical
+    }
+  };
+
   const handleLike = async (e) => {
     e.preventDefault();
-    if (!user || liked) return;
-    setLiked(true);
-    try {
+    if (!user) return;
+
+    // Find existing like interaction
+    const q = query(collection(db, "interactions"),
+      where("userId", "==", user.uid),
+      where("episodeId", "==", episode.id),
+      where("type", "==", "like")
+    );
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+      // Unlike — delete the interaction and decrement
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      await updateDoc(doc(db, "episodes", episode.id), { likeCount: increment(-1) });
+      setLiked(false);
+      setLikeCount(c => Math.max(0, c - 1));
+    } else {
+      // Like — add interaction and increment
+      const interaction = {
+        userId: user.uid,
+        episodeId: episode.id,
+        type: "like",
+        status: profile?.role === "new" ? "pending" : "approved",
+        createdAt: new Date(),
+      };
+      await addDoc(collection(db, "interactions"), interaction);
       await updateDoc(doc(db, "episodes", episode.id), { likeCount: increment(1) });
       if (profile?.role === "new") {
-        await addDoc(collection(db, "moderationQueue"), {
-          userId: user.uid, episodeId: episode.id,
-          type: "like", status: "pending", createdAt: new Date(),
-        });
+        await addDoc(collection(db, "moderationQueue"), interaction);
       }
-    } catch (err) {
-      console.error(err);
-      setLiked(false);
+      setLiked(true);
+      setLikeCount(c => c + 1);
+    }
+  };
+
+  const handleFavorite = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+
+    const q = query(collection(db, "interactions"),
+      where("userId", "==", user.uid),
+      where("episodeId", "==", episode.id),
+      where("type", "==", "favorite")
+    );
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+      // Unfavorite
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      await updateDoc(doc(db, "episodes", episode.id), { favoriteCount: increment(-1) });
+      setFavorited(false);
+      setFavoriteCount(c => Math.max(0, c - 1));
+    } else {
+      // Favorite
+      await addDoc(collection(db, "interactions"), {
+        userId: user.uid,
+        episodeId: episode.id,
+        type: "favorite",
+        status: "approved",
+        createdAt: new Date(),
+      });
+      await updateDoc(doc(db, "episodes", episode.id), { favoriteCount: increment(1) });
+      setFavorited(true);
+      setFavoriteCount(c => c + 1);
     }
   };
 
@@ -91,16 +171,12 @@ export default function EpisodeCard({ episode }) {
           {/* Artwork */}
           <div style={{ flexShrink: 0 }}>
             {episode.imageUrl && !imgError ? (
-              <img
-                src={episode.imageUrl}
-                alt={episode.podcastTitle}
+              <img src={episode.imageUrl} alt={episode.podcastTitle}
                 onError={() => setImgError(true)}
-                style={{ width: 80, height: 80, borderRadius: "10px", objectFit: "cover" }}
-              />
+                style={{ width: 80, height: 80, borderRadius: "10px", objectFit: "cover" }} />
             ) : (
               <div style={{
-                width: 80, height: 80, borderRadius: "10px",
-                background: placeholderBg,
+                width: 80, height: 80, borderRadius: "10px", background: placeholderBg,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: "1.2rem", fontWeight: 700,
                 color: "rgba(255,255,255,0.85)", fontFamily: "var(--font-display)"
@@ -110,8 +186,6 @@ export default function EpisodeCard({ episode }) {
 
           {/* Content */}
           <div style={{ flex: 1, minWidth: 0 }}>
-
-            {/* Show name + chip row */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.15rem" }}>
               <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--color-accent)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 {episode.podcastTitle || "Podcast"}
@@ -124,29 +198,24 @@ export default function EpisodeCard({ episode }) {
                   }}>🎙️ Host</span>
                 )}
               </p>
-              <button
-                onClick={e => { e.preventDefault(); setShowWhy(true); }}
+              <button onClick={e => { e.preventDefault(); setShowWhy(true); }}
                 className="why-chip" style={{ flexShrink: 0, fontSize: "0.68rem" }}>
                 {chip.icon} {chip.label}
               </button>
             </div>
 
-            {/* Episode title */}
             <p style={{ fontWeight: 600, fontSize: "0.92rem", lineHeight: 1.35, color: "var(--color-text)", marginBottom: "0.25rem" }}>
               {episode.title}
             </p>
 
-            {/* Meta row: date + duration */}
             <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.4rem" }}>
               {[date, duration].filter(Boolean).join(" · ")}
             </p>
 
-            {/* Description */}
             {episode.description && (
               <p style={{
-                fontSize: "0.8rem", color: "var(--color-text-muted)",
-                lineHeight: 1.45, marginBottom: "0.5rem",
-                display: "-webkit-box", WebkitLineClamp: 2,
+                fontSize: "0.8rem", color: "var(--color-text-muted)", lineHeight: 1.45,
+                marginBottom: "0.5rem", display: "-webkit-box", WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical", overflow: "hidden"
               }}>
                 {episode.description.replace(/<[^>]*>/g, "")}
@@ -156,23 +225,36 @@ export default function EpisodeCard({ episode }) {
             {/* Actions */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
               <button onClick={handleLike} disabled={!user}
+                title={liked ? "Unlike" : "Like"}
                 style={{
                   background: "none", border: "none",
                   cursor: user ? "pointer" : "default",
                   fontSize: "0.78rem",
                   color: liked ? "var(--color-accent)" : "var(--color-text-muted)",
-                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0
+                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0,
+                  transition: "color 0.15s"
                 }}>
-                ♥ {(episode.likeCount || 0) + (liked ? 1 : 0)}
+                {liked ? "♥" : "♡"} {likeCount}
               </button>
-              <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-                ★ {episode.favoriteCount || 0}
-              </span>
+
+              <button onClick={handleFavorite} disabled={!user}
+                title={favorited ? "Unfavorite" : "Favorite"}
+                style={{
+                  background: "none", border: "none",
+                  cursor: user ? "pointer" : "default",
+                  fontSize: "0.78rem",
+                  color: favorited ? "var(--color-accent)" : "var(--color-text-muted)",
+                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0,
+                  transition: "color 0.15s"
+                }}>
+                {favorited ? "★" : "☆"} {favoriteCount}
+              </button>
+
               <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
                 💬 {episode.commentCount || 0}
               </span>
-              <button
-                onClick={e => { e.preventDefault(); setShowShare(true); }}
+
+              <button onClick={e => { e.preventDefault(); setShowShare(true); }}
                 style={{
                   background: "none", border: "1px solid var(--color-border)",
                   borderRadius: "6px", padding: "0.18rem 0.55rem",
@@ -181,6 +263,7 @@ export default function EpisodeCard({ episode }) {
                 }}>
                 Share ↗
               </button>
+
               {user && (
                 <button onClick={handleFlag}
                   style={{

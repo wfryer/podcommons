@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, getDocs, orderBy } from "firebase/firestore";
+import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, getDocs, orderBy, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "../components/WhyThisModal";
@@ -41,6 +41,8 @@ export default function Episode() {
   const [comments, setComments] = useState([]);
   const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [favoriteCount, setFavoriteCount] = useState(0);
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
@@ -54,7 +56,12 @@ export default function Episode() {
 
   const fetchEpisode = async () => {
     const snap = await getDoc(doc(db, "episodes", id));
-    if (snap.exists()) setEpisode({ id: snap.id, ...snap.data() });
+    if (snap.exists()) {
+      const data = snap.data();
+      setEpisode({ id: snap.id, ...data });
+      setLikeCount(data.likeCount || 0);
+      setFavoriteCount(data.favoriteCount || 0);
+    }
     setLoading(false);
   };
 
@@ -75,23 +82,45 @@ export default function Episode() {
   };
 
   const handleLike = async () => {
-    if (!user || liked) return;
-    setLiked(true);
-    await updateDoc(doc(db, "episodes", id), { likeCount: increment(1) });
-    if (profile?.role === "new") {
-      await addDoc(collection(db, "moderationQueue"), {
+    if (!user) return;
+    const q = query(collection(db, "interactions"),
+      where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "like"));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      await updateDoc(doc(db, "episodes", id), { likeCount: increment(-1) });
+      setLiked(false);
+      setLikeCount(c => Math.max(0, c - 1));
+    } else {
+      await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: id, type: "like",
-        status: "pending", createdAt: new Date(),
+        status: profile?.role === "new" ? "pending" : "approved", createdAt: new Date(),
       });
+      await updateDoc(doc(db, "episodes", id), { likeCount: increment(1) });
+      setLiked(true);
+      setLikeCount(c => c + 1);
     }
-    setEpisode(prev => ({ ...prev, likeCount: (prev.likeCount || 0) + 1 }));
   };
 
   const handleFavorite = async () => {
-    if (!user || favorited) return;
-    setFavorited(true);
-    await updateDoc(doc(db, "episodes", id), { favoriteCount: increment(1) });
-    setEpisode(prev => ({ ...prev, favoriteCount: (prev.favoriteCount || 0) + 1 }));
+    if (!user) return;
+    const q = query(collection(db, "interactions"),
+      where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "favorite"));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      await updateDoc(doc(db, "episodes", id), { favoriteCount: increment(-1) });
+      setFavorited(false);
+      setFavoriteCount(c => Math.max(0, c - 1));
+    } else {
+      await addDoc(collection(db, "interactions"), {
+        userId: user.uid, episodeId: id, type: "favorite",
+        status: "approved", createdAt: new Date(),
+      });
+      await updateDoc(doc(db, "episodes", id), { favoriteCount: increment(1) });
+      setFavorited(true);
+      setFavoriteCount(c => c + 1);
+    }
   };
 
   const handleComment = async () => {
@@ -206,7 +235,7 @@ export default function Episode() {
             color: liked ? "var(--color-accent)" : "var(--color-text-muted)",
             cursor: user ? "pointer" : "default", fontSize: "0.875rem"
           }}>
-          ♥ {episode.likeCount || 0} {liked ? "Liked!" : "Like"}
+          {liked ? "♥" : "♡"} {likeCount} {liked ? "Liked!" : "Like"}
         </button>
 
         <button onClick={handleFavorite} disabled={!user}
@@ -218,7 +247,7 @@ export default function Episode() {
             color: favorited ? "var(--color-accent)" : "var(--color-text-muted)",
             cursor: user ? "pointer" : "default", fontSize: "0.875rem"
           }}>
-          ★ {episode.favoriteCount || 0} {favorited ? "Saved!" : "Favorite"}
+          {favorited ? "★" : "☆"} {favoriteCount} {favorited ? "Saved!" : "Favorite"}
         </button>
 
         <button onClick={() => setShowShare(true)}
