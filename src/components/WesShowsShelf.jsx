@@ -5,20 +5,18 @@ const FIRST_PARTY_SHOWS = [
   {
     slug: "edtech-situation-room",
     title: "EdTech Situation Room",
-    artworkUrl: "https://wsrv.nl/?url=https://edtechsr.com/wp-content/uploads/2015/01/edtechSR-artwork-2021-512.jpg&w=120&h=120&fit=cover",
-    fallbacks: [
-      "https://d3dthqtvwic6y7.cloudfront.net/podcast-covers/000/035/555/medium/moving-at-the-speed-of-creativity-podcasts.jpg",
-    ],
+    artworkUrl: "/images/edtechsr-1500.jpg",
+    fallbacks: [],
     emoji: "🎓",
-    rssUrl: "https://edtechsr.com/feed/mp3/",
   },
   {
     slug: "wes-and-shelly-share",
     title: "Wes & Shelly Share",
-    artworkUrl: null,
-    fallbacks: [],
+    artworkUrl: "/images/wsshare-showart.jpg",
+    fallbacks: [
+      "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/36477191/36477191-1674075056894-6b8e3b4c0c0c0.jpg",
+    ],
     emoji: "💛",
-    rssUrl: null,
   },
   {
     slug: "speed-of-creativity",
@@ -26,7 +24,6 @@ const FIRST_PARTY_SHOWS = [
     artworkUrl: "https://d3dthqtvwic6y7.cloudfront.net/podcast-covers/000/035/555/medium/moving-at-the-speed-of-creativity-podcasts.jpg",
     fallbacks: [],
     emoji: "⚡",
-    rssUrl: "https://anchor.fm/s/speedofcreativity/podcast/rss",
   },
   {
     slug: "heal-our-culture",
@@ -34,15 +31,15 @@ const FIRST_PARTY_SHOWS = [
     artworkUrl: "https://substackcdn.com/image/fetch/w_120,h_120,c_fill,f_auto,q_auto:best/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F777ba2db-5eaa-4e01-bfb4-0d58c47d3f4a_1280x1280.png",
     fallbacks: [],
     emoji: "🌱",
-    rssUrl: "https://api.substack.com/feed/podcast/2316077/private/f13d348b-326e-481d-b47a-0e8fd910c4e5.rss",
   },
   {
     slug: "resist-and-heal",
     title: "Resist & Heal",
-    artworkUrl: null,
-    fallbacks: [],
+    artworkUrl: "/images/resist-and-heal.jpg",
+    fallbacks: [
+      "",
+    ],
     emoji: "✊",
-    rssUrl: "https://api.substack.com/feed/podcast/2986841/private/07af6bfa-69b5-4035-aac5-201d2ad57d1b.rss",
   },
 ];
 
@@ -65,8 +62,8 @@ function ShowCard({ show }) {
         style={{
           width: 90, background: "var(--color-surface)",
           border: "1px solid var(--color-border)", borderRadius: "10px",
-          padding: "0.5rem", textAlign: "center", transition: "border-color 0.2s, transform 0.2s",
-          cursor: "pointer",
+          padding: "0.5rem", textAlign: "center",
+          transition: "border-color 0.2s, transform 0.2s", cursor: "pointer",
         }}
         onMouseEnter={e => {
           e.currentTarget.style.borderColor = "var(--color-accent)";

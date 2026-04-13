@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, where } from "firebase/firestore";
 import { db } from "../firebase";
 import EpisodeCard from "../components/EpisodeCard";
 import WesShowsShelf from "../components/WesShowsShelf";
@@ -30,25 +30,67 @@ export default function Home() {
   const fetchEpisodes = async () => {
     setLoading(true);
     try {
-      // Simple queries without composite indexes for now
-      let q;
-      if (activeTab === "latest") {
-        q = query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(20));
-      } else if (activeTab === "community") {
-        q = query(collection(db, "episodes"), orderBy("likeCount", "desc"), limit(20));
-      } else if (activeTab === "wespicks") {
-        q = query(collection(db, "episodes"), orderBy("featuredByAdmin", "desc"), limit(20));
-      } else {
-        q = query(collection(db, "episodes"), orderBy("algorithmScore", "desc"), limit(20));
-      }
+      let snap;
 
-      const snap = await getDocs(q);
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Filter out hidden/removed client-side for now
-      setEpisodes(all.filter(e => e.visibility !== "hidden" && e.visibility !== "removed"));
+      if (activeTab === "latest") {
+        // Pure chronological — newest first
+        const q = query(
+          collection(db, "episodes"),
+          orderBy("publishedAt", "desc"),
+          limit(30)
+        );
+        snap = await getDocs(q);
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setEpisodes(all.filter(e => e.visibility !== "hidden" && e.visibility !== "removed"));
+
+      } else if (activeTab === "wespicks") {
+        // First-party (host) episodes + any admin-featured, sorted by date
+        const q = query(
+          collection(db, "episodes"),
+          orderBy("publishedAt", "desc"),
+          limit(100)
+        );
+        snap = await getDocs(q);
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const filtered = all.filter(e =>
+          e.visibility !== "hidden" &&
+          e.visibility !== "removed" &&
+          (e.isFirstParty === true || e.featuredByAdmin === true)
+        );
+        setEpisodes(filtered);
+
+      } else if (activeTab === "community") {
+        // Most liked episodes
+        const q = query(
+          collection(db, "episodes"),
+          orderBy("likeCount", "desc"),
+          limit(30)
+        );
+        snap = await getDocs(q);
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setEpisodes(all.filter(e => e.visibility !== "hidden" && e.visibility !== "removed"));
+
+      } else {
+        // Discover — algorithm score, fall back to date
+        const q = query(
+          collection(db, "episodes"),
+          orderBy("algorithmScore", "desc"),
+          limit(30)
+        );
+        snap = await getDocs(q);
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setEpisodes(all.filter(e => e.visibility !== "hidden" && e.visibility !== "removed"));
+      }
     } catch (err) {
-      console.error("Error fetching episodes:", err);
-      setEpisodes([]);
+      console.error("Feed fetch error:", err);
+      // Fallback: just get recent episodes
+      try {
+        const q = query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(30));
+        const snap = await getDocs(q);
+        setEpisodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        setEpisodes([]);
+      }
     }
     setLoading(false);
   };
@@ -58,14 +100,17 @@ export default function Home() {
       <WesShowsShelf />
 
       {/* Feed Tabs */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
         {TABS.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             className={`feed-tab ${activeTab === tab.id ? "active" : ""}`}>
             {tab.label}
           </button>
         ))}
-        <button onClick={() => setShowSliders(!showSliders)}
+        <button
+          onClick={() => setShowSliders(!showSliders)}
           style={{
             marginLeft: "auto", fontSize: "0.8rem", padding: "0.4rem 0.75rem",
             borderRadius: "8px", border: "1px solid var(--color-border)",
@@ -78,6 +123,14 @@ export default function Home() {
 
       {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} />}
 
+      {/* Tab description */}
+      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
+        {activeTab === "discover" && "Algorithmically ranked episodes based on your taste profile"}
+        {activeTab === "latest" && "Most recently published episodes across all subscriptions"}
+        {activeTab === "wespicks" && "Episodes from Wes's own shows and admin-featured picks"}
+        {activeTab === "community" && "Most liked episodes by the PodCommons community"}
+      </p>
+
       {loading ? (
         <div style={{ textAlign: "center", padding: "3rem", color: "var(--color-text-muted)" }}>
           Loading episodes...
@@ -89,19 +142,26 @@ export default function Home() {
           borderRadius: "12px", marginTop: "1rem"
         }}>
           <p style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🎙️</p>
-          <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>No episodes yet</p>
+          <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>No episodes here yet</p>
           <p style={{ fontSize: "0.85rem" }}>
             {activeTab === "wespicks"
-              ? "Episodes you feature will appear here."
+              ? "Episodes from your five shows will appear here. You can also feature any episode from the Admin dashboard."
+              : activeTab === "community"
+              ? "Like some episodes to get the community feed going!"
               : "Import your OPML file in the Admin dashboard to start pulling in podcast episodes."}
           </p>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-          {episodes.map(ep => (
-            <EpisodeCard key={ep.id} episode={ep} />
-          ))}
-        </div>
+        <>
+          <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
+            {episodes.length} episode{episodes.length !== 1 ? "s" : ""}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {episodes.map(ep => (
+              <EpisodeCard key={ep.id} episode={ep} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
