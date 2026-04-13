@@ -20,6 +20,20 @@ function formatDate(ts) {
   return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
+function stripHtml(html) {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function Episode() {
   const { id } = useParams();
   const { user, profile } = useAuth();
@@ -118,11 +132,13 @@ export default function Episode() {
     </div>
   );
 
+  const cleanDescription = stripHtml(episode.description);
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
 
-      {/* Back */}
-      <Link to="/" style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.3rem", marginBottom: "1.5rem" }}>
+      <Link to="/" style={{ color: "var(--color-text-muted)", fontSize: "0.85rem",
+        display: "inline-flex", alignItems: "center", gap: "0.3rem", marginBottom: "1.5rem" }}>
         ← Back to feed
       </Link>
 
@@ -162,19 +178,20 @@ export default function Episode() {
       {episode.episodeUrl && (
         <a href={episode.episodeUrl} target="_blank" rel="noopener noreferrer"
           className="btn-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", textDecoration: "none" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem",
+            marginBottom: "1.5rem", textDecoration: "none" }}>
           ▶ Listen to this episode ↗
         </a>
       )}
 
-      {/* Description */}
-      {episode.description && (
+      {/* Description — HTML stripped */}
+      {cleanDescription && (
         <div style={{
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "12px", padding: "1.25rem", marginBottom: "1.5rem",
           fontSize: "0.9rem", lineHeight: 1.7, color: "var(--color-text-muted)"
         }}>
-          {episode.description}
+          {cleanDescription}
         </div>
       )}
 
@@ -214,9 +231,7 @@ export default function Episode() {
           Share ↗
         </button>
 
-        <button onClick={() => setShowWhy(true)}
-          className="why-chip"
-          style={{ alignSelf: "center" }}>
+        <button onClick={() => setShowWhy(true)} className="why-chip" style={{ alignSelf: "center" }}>
           🧠 Why recommended?
         </button>
       </div>
