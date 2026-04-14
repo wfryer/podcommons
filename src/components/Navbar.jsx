@@ -23,9 +23,7 @@ export default function Navbar() {
           setSiteTitle(snap.data().title || "PodCommons");
           setSiteByline(snap.data().byline || "");
         }
-      } catch (err) {
-        // Use defaults
-      }
+      } catch (err) {}
     };
     fetchSettings();
   }, []);
@@ -66,31 +64,53 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               {profile?.role === "admin" && (
                 <Link to="/admin"
-                  style={{ fontSize: "0.8rem", background: "var(--color-accent)", color: "#000", padding: "0.25rem 0.75rem", borderRadius: "6px", fontWeight: 600 }}>
+                  style={{ fontSize: "0.8rem", background: "var(--color-accent)", color: "#000",
+                    padding: "0.25rem 0.75rem", borderRadius: "6px", fontWeight: 600 }}>
                   Admin
                 </Link>
               )}
               <button
-                onClick={() => profile?.username ? navigate(`/profile/${profile.username}`) : null}
+                onClick={() => navigate(profile ? `/profile/${profile.username}` : "/complete-profile")}
                 className="flex items-center gap-2">
-                <img
-                  src={gravatarUrl(user.email)}
-                  alt="avatar"
-                  className="rounded-full"
-                  style={{ width: 32, height: 32, border: "2px solid var(--color-border)" }}
-                />
+                <img src={gravatarUrl(user.email)} alt="avatar" className="rounded-full"
+                  style={{ width: 32, height: 32, border: "2px solid var(--color-border)" }} />
                 <span style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
                   {profile?.username || user.displayName?.split(" ")[0]}
                 </span>
               </button>
-              <button onClick={logout} className="btn-ghost" style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>
+              {!profile && (
+                <Link to="/complete-profile"
+                  style={{ fontSize: "0.8rem", background: "var(--color-accent)", color: "#000",
+                    padding: "0.3rem 0.75rem", borderRadius: "6px", fontWeight: 600, textDecoration: "none" }}>
+                  Complete profile
+                </Link>
+              )}
+              {profile && (
+                <Link to="/settings"
+                  style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", padding: "0.3rem 0.5rem" }}
+                  title="Edit profile">
+                  ⚙️
+                </Link>
+              )}
+              <button onClick={logout} className="btn-ghost"
+                style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>
                 Sign out
               </button>
             </div>
           ) : (
-            <button onClick={login} className="btn-primary" style={{ fontSize: "0.85rem" }}>
-              Join Community
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={login}
+                style={{
+                  fontSize: "0.85rem", padding: "0.4rem 1rem", borderRadius: "8px",
+                  border: "1px solid var(--color-border)", background: "none",
+                  color: "var(--color-text-muted)", cursor: "pointer"
+                }}>
+                Sign in
+              </button>
+              <button onClick={login} className="btn-primary" style={{ fontSize: "0.85rem" }}>
+                Join Community
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -8,6 +8,7 @@ import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import Suggest from "./pages/Suggest";
 import Show from "./pages/Show";
+import Settings from "./pages/Settings";
 import Navbar from "./components/Navbar";
 
 // Guard: logged in but no profile → send to complete-profile
@@ -35,6 +36,7 @@ function App() {
             <Route path="/admin" element={<Admin />} />
             <Route path="/suggest" element={<Suggest />} />
             <Route path="/show/:slug" element={<Show />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
