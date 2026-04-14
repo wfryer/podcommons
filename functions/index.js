@@ -1,10 +1,14 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
 initializeApp();
 const db = getFirestore();
+
+// Explicitly define the secret
+const ADMIN_TOKEN = defineSecret("ADMIN_TOKEN");
 
 function parseRSSItems(xml, limit = 5) {
   const items = [];
@@ -55,7 +59,7 @@ function getChannelArtwork(xml) {
 
 async function pollFeeds(limitCount = 0) {
   const startTime = Date.now();
-  let processed = 0, added = 0, errors = 0, skipped = 0;
+  let processed = 0, added = 0, errors = 0;
 
   let podQuery = db.collection("podcasts").where("visibility", "==", "visible");
   if (limitCount > 0) podQuery = podQuery.limit(limitCount);
@@ -68,8 +72,7 @@ async function pollFeeds(limitCount = 0) {
   const blockedUrls = new Set(blockedSnap.docs.map(d => d.data().feedUrl));
 
   for (const podcast of podcasts) {
-    if (blockedUrls.has(podcast.feedUrl)) { skipped++; continue; }
-
+    if (blockedUrls.has(podcast.feedUrl)) continue;
     try {
       const res = await fetch(podcast.feedUrl, {
         headers: { "User-Agent": "PodCommons/1.0 RSS Reader" },
@@ -77,7 +80,6 @@ async function pollFeeds(limitCount = 0) {
       });
       if (!res.ok) { errors++; continue; }
       const xml = await res.text();
-
       const artworkUrl = podcast.artworkUrl || getChannelArtwork(xml);
 
       await db.collection("podcasts").doc(podcast.id).update({
@@ -86,13 +88,10 @@ async function pollFeeds(limitCount = 0) {
       });
 
       const items = parseRSSItems(xml, 5);
-
       for (const item of items) {
         const existing = await db.collection("episodes")
-          .where("episodeUrl", "==", item.episodeUrl)
-          .limit(1).get();
+          .where("episodeUrl", "==", item.episodeUrl).limit(1).get();
         if (!existing.empty) continue;
-
         await db.collection("episodes").add({
           podcastId: podcast.id,
           podcastTitle: podcast.title,
@@ -104,9 +103,7 @@ async function pollFeeds(limitCount = 0) {
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
           duration: item.duration,
           topics: [],
-          likeCount: 0,
-          favoriteCount: 0,
-          commentCount: 0,
+          likeCount: 0, favoriteCount: 0, commentCount: 0,
           visibility: "visible",
           isFirstParty: podcast.isFirstParty || false,
           firstPartySlug: podcast.firstPartySlug || null,
@@ -126,7 +123,6 @@ async function pollFeeds(limitCount = 0) {
   }
 
   const duration = Math.round((Date.now() - startTime) / 1000);
-
   await db.collection("siteSettings").doc("pollStatus").set({
     lastPollAt: FieldValue.serverTimestamp(),
     lastPollDuration: duration,
@@ -145,21 +141,29 @@ exports.scheduledRSSPoll = onSchedule({
   schedule: "every 4 hours",
   timeoutSeconds: 540,
   memory: "512MiB",
+  secrets: [ADMIN_TOKEN],
 }, async () => {
   await pollFeeds();
 });
 
-// Manual trigger via HTTP (admin only)
+// Manual trigger — explicitly binds secret
 exports.manualRSSPoll = onRequest({
   timeoutSeconds: 540,
   memory: "512MiB",
-  cors: ["https://podcasts.wesfryer.com", "https://podcommons-41064.web.app", "http://localhost:5173"],
+  secrets: [ADMIN_TOKEN],
+  cors: true,
 }, async (req, res) => {
   const token = req.query.token || req.headers["x-admin-token"];
-  if (token !== process.env.ADMIN_TOKEN) {
+  const secret = ADMIN_TOKEN.value();
+  
+  console.log(`Token received: ${token ? token.slice(0,4) + "..." : "none"}`);
+  console.log(`Secret loaded: ${secret ? secret.slice(0,4) + "..." : "NOT LOADED"}`);
+
+  if (!token || token !== secret) {
     res.status(403).json({ error: "Unauthorized" });
     return;
   }
+
   try {
     const limit = parseInt(req.query.limit) || 0;
     const result = await pollFeeds(limit);
