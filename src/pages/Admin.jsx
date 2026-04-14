@@ -61,6 +61,7 @@ function PollStatus({ onRefresh }) {
             { label: "Last poll", value: fmt(status.lastPollAt) },
             { label: "Duration", value: status.lastPollDuration ? `${status.lastPollDuration}s` : "—" },
             { label: "Episodes added", value: status.lastPollAdded ?? "—" },
+            { label: "AI analyzed", value: status.lastPollAnalyzed ?? "—" },
             { label: "Feeds processed", value: status.lastPollProcessed ?? "—" },
             { label: "Errors", value: status.lastPollErrors ?? "—" },
             { label: "Next poll", value: fmt(status.nextPollAt) },
