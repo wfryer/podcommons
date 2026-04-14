@@ -188,11 +188,11 @@ export default function EpisodeCard({ episode }) {
               title={playing ? "Pause" : hasAudio ? "Play" : "Listen externally"}
               style={{
                 position: "absolute", inset: 0, borderRadius: "10px",
-                background: playing ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0)",
+                background: playing ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.25)",
                 border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "background 0.2s",
-                opacity: playing ? 1 : 0,
+                transition: "all 0.2s",
+                opacity: playing ? 1 : 0.85,
               }}
               onMouseEnter={e => e.currentTarget.style.opacity = "1"}
               onMouseLeave={e => { if (!playing) e.currentTarget.style.opacity = "0"; }}
