@@ -13,9 +13,7 @@ const FIRST_PARTY_SHOWS = [
     slug: "wes-and-shelly-share",
     title: "Wes & Shelly Share",
     artworkUrl: "/images/wsshare-showart.jpg",
-    fallbacks: [
-      "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/36477191/36477191-1674075056894-6b8e3b4c0c0c0.jpg",
-    ],
+    fallbacks: [],
     emoji: "💛",
   },
   {
@@ -36,9 +34,7 @@ const FIRST_PARTY_SHOWS = [
     slug: "resist-and-heal",
     title: "Resist & Heal",
     artworkUrl: "/images/resist-and-heal.jpg",
-    fallbacks: [
-      "",
-    ],
+    fallbacks: [],
     emoji: "✊",
   },
 ];
@@ -74,12 +70,9 @@ function ShowCard({ show }) {
           e.currentTarget.style.transform = "translateY(0)";
         }}>
         {!showPlaceholder ? (
-          <img
-            src={currentUrl}
-            alt={show.title}
+          <img src={currentUrl} alt={show.title}
             onError={() => setImgIndex(i => i + 1)}
-            style={{ width: 60, height: 60, borderRadius: "8px", objectFit: "cover", margin: "0 auto", display: "block" }}
-          />
+            style={{ width: 60, height: 60, borderRadius: "8px", objectFit: "cover", margin: "0 auto", display: "block" }} />
         ) : (
           <div style={{
             width: 60, height: 60, borderRadius: "8px",
@@ -99,21 +92,36 @@ function ShowCard({ show }) {
   );
 }
 
-export default function WesShowsShelf() {
+export default function WesShowsShelf({ visible, onToggle }) {
   return (
-    <div style={{ marginBottom: "1.5rem" }}>
-      <p style={{
-        fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em",
-        color: "var(--color-text-muted)", textTransform: "uppercase", marginBottom: "0.6rem"
-      }}>
-        Wes' Podcasts
-      </p>
-      <div style={{ display: "flex", gap: "0.6rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
-        {FIRST_PARTY_SHOWS.map(show => (
-          <ShowCard key={show.slug} show={show} />
-        ))}
+    <div style={{ marginBottom: "1rem" }}>
+      {/* Header with toggle */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem" }}>
+        <p style={{
+          fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em",
+          color: "var(--color-text-muted)", textTransform: "uppercase", margin: 0
+        }}>
+          Wes' Podcasts
+        </p>
+        <button onClick={onToggle} style={{
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: "0.7rem", color: "var(--color-text-muted)",
+          padding: "0.1rem 0.4rem"
+        }}>
+          {visible ? "▲ hide" : "▼ show"}
+        </button>
       </div>
-      <div style={{ height: "1px", background: "var(--color-border)", marginTop: "1rem" }} />
+
+      {/* Collapsible shelf */}
+      {visible && (
+        <div style={{ display: "flex", gap: "0.6rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
+          {FIRST_PARTY_SHOWS.map(show => (
+            <ShowCard key={show.slug} show={show} />
+          ))}
+        </div>
+      )}
+
+      <div style={{ height: "1px", background: "var(--color-border)", marginTop: visible ? "1rem" : "0.5rem" }} />
     </div>
   );
 }

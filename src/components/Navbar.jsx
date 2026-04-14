@@ -1,5 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import md5 from "md5";
 
 function gravatarUrl(email) {
@@ -9,6 +12,23 @@ function gravatarUrl(email) {
 export default function Navbar() {
   const { user, profile, login, logout } = useAuth();
   const navigate = useNavigate();
+  const [siteTitle, setSiteTitle] = useState("PodCommons");
+  const [siteByline, setSiteByline] = useState("");
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const snap = await getDoc(doc(db, "siteSettings", "general"));
+        if (snap.exists()) {
+          setSiteTitle(snap.data().title || "PodCommons");
+          setSiteByline(snap.data().byline || "");
+        }
+      } catch (err) {
+        // Use defaults
+      }
+    };
+    fetchSettings();
+  }, []);
 
   return (
     <nav style={{ background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)" }}
@@ -17,9 +37,16 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <span style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)", fontSize: "1.4rem", fontWeight: 900 }}>
-            🎙️ PodCommons
-          </span>
+          <div>
+            <span style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)", fontSize: "1.4rem", fontWeight: 900 }}>
+              🎙️ {siteTitle}
+            </span>
+            {siteByline && (
+              <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginLeft: "0.5rem" }}>
+                by {siteByline}
+              </span>
+            )}
+          </div>
         </Link>
 
         {/* Right side */}
@@ -28,6 +55,11 @@ export default function Navbar() {
             style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
             className="hover:text-white transition-colors hidden sm:block">
             Suggest a Podcast
+          </Link>
+          <Link to="/about"
+            style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
+            className="hover:text-white transition-colors hidden sm:block">
+            About
           </Link>
 
           {user ? (
