@@ -1,32 +1,171 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const logger = require("firebase-functions/logger");
+initializeApp();
+const db = getFirestore();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+function parseRSSItems(xml, limit = 5) {
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  let count = 0;
+  while ((match = itemRegex.exec(xml)) !== null && count < limit) {
+    const block = match[1];
+    const get = (tag) => {
+      const m = block.match(new RegExp(
+        `<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`
+      ));
+      return m ? (m[1] || m[2] || "").trim() : "";
+    };
+    const enclosure = block.match(/<enclosure[^>]+url="([^"]+)"/i);
+    const duration = block.match(/<itunes:duration>([^<]+)<\/itunes:duration>/i);
+    const itunesImg = block.match(/<itunes:image[^>]+href="([^"]+)"/i);
+    const title = get("title");
+    const link = get("link") || get("guid");
+    if (!title || !link) { count++; continue; }
+    items.push({
+      title: title.slice(0, 200),
+      description: get("description").replace(/<[^>]*>/g, "").slice(0, 500),
+      episodeUrl: link,
+      audioUrl: enclosure?.[1] || "",
+      imageUrl: itunesImg?.[1] || "",
+      pubDate: get("pubDate"),
+      duration: parseDuration(duration?.[1] || ""),
+    });
+    count++;
+  }
+  return items;
+}
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+function parseDuration(str) {
+  if (!str) return 0;
+  const parts = str.split(":").map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parseInt(str) || 0;
+}
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+function getChannelArtwork(xml) {
+  const itunes = xml.match(/<itunes:image[^>]+href="([^"]+)"/i);
+  const img = xml.match(/<image>[\s\S]*?<url>([^<]+)<\/url>/i);
+  return itunes?.[1] || img?.[1] || "";
+}
+
+async function pollFeeds(limitCount = 0) {
+  const startTime = Date.now();
+  let processed = 0, added = 0, errors = 0, skipped = 0;
+
+  let podQuery = db.collection("podcasts").where("visibility", "==", "visible");
+  if (limitCount > 0) podQuery = podQuery.limit(limitCount);
+  const podSnap = await podQuery.get();
+  const podcasts = podSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  console.log(`Polling ${podcasts.length} feeds...`);
+
+  const blockedSnap = await db.collection("blockedFeeds").get();
+  const blockedUrls = new Set(blockedSnap.docs.map(d => d.data().feedUrl));
+
+  for (const podcast of podcasts) {
+    if (blockedUrls.has(podcast.feedUrl)) { skipped++; continue; }
+
+    try {
+      const res = await fetch(podcast.feedUrl, {
+        headers: { "User-Agent": "PodCommons/1.0 RSS Reader" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) { errors++; continue; }
+      const xml = await res.text();
+
+      const artworkUrl = podcast.artworkUrl || getChannelArtwork(xml);
+
+      await db.collection("podcasts").doc(podcast.id).update({
+        lastPolledAt: FieldValue.serverTimestamp(),
+        artworkUrl: artworkUrl || podcast.artworkUrl || "",
+      });
+
+      const items = parseRSSItems(xml, 5);
+
+      for (const item of items) {
+        const existing = await db.collection("episodes")
+          .where("episodeUrl", "==", item.episodeUrl)
+          .limit(1).get();
+        if (!existing.empty) continue;
+
+        await db.collection("episodes").add({
+          podcastId: podcast.id,
+          podcastTitle: podcast.title,
+          title: item.title,
+          description: item.description,
+          episodeUrl: item.episodeUrl,
+          audioUrl: item.audioUrl,
+          imageUrl: item.imageUrl || artworkUrl || "",
+          publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
+          duration: item.duration,
+          topics: [],
+          likeCount: 0,
+          favoriteCount: 0,
+          commentCount: 0,
+          visibility: "visible",
+          isFirstParty: podcast.isFirstParty || false,
+          firstPartySlug: podcast.firstPartySlug || null,
+          featuredByAdmin: false,
+          algorithmScore: podcast.isFirstParty ? 0.85 : 0.70,
+          source: "opml",
+          importedAt: FieldValue.serverTimestamp(),
+        });
+        added++;
+      }
+      processed++;
+    } catch (err) {
+      console.error(`Error polling ${podcast.feedUrl}:`, err.message);
+      errors++;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  const duration = Math.round((Date.now() - startTime) / 1000);
+
+  await db.collection("siteSettings").doc("pollStatus").set({
+    lastPollAt: FieldValue.serverTimestamp(),
+    lastPollDuration: duration,
+    lastPollAdded: added,
+    lastPollProcessed: processed,
+    lastPollErrors: errors,
+    nextPollAt: new Date(Date.now() + 4 * 60 * 60 * 1000),
+  });
+
+  console.log(`Poll complete: ${processed} feeds, ${added} new episodes, ${errors} errors, ${duration}s`);
+  return { processed, added, errors, duration };
+}
+
+// Scheduled every 4 hours
+exports.scheduledRSSPoll = onSchedule({
+  schedule: "every 4 hours",
+  timeoutSeconds: 540,
+  memory: "512MiB",
+}, async () => {
+  await pollFeeds();
+});
+
+// Manual trigger via HTTP (admin only)
+exports.manualRSSPoll = onRequest({
+  timeoutSeconds: 540,
+  memory: "512MiB",
+  cors: ["https://podcasts.wesfryer.com", "https://podcommons-41064.web.app", "http://localhost:5173"],
+}, async (req, res) => {
+  const token = req.query.token || req.headers["x-admin-token"];
+  if (token !== process.env.ADMIN_TOKEN) {
+    res.status(403).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const limit = parseInt(req.query.limit) || 0;
+    const result = await pollFeeds(limit);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("Manual poll error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
