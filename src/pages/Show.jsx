@@ -69,7 +69,7 @@ export default function Show() {
       const q = query(
         collection(db, "episodes"),
         where("firstPartySlug", "==", slug),
-        limit(100)
+        limit(500)
       );
       const snap = await getDocs(q);
       const eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
