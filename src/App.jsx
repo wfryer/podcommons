@@ -12,7 +12,8 @@ import Settings from "./pages/Settings";
 import About from "./pages/About";
 import Navbar from "./components/Navbar";
 
-// Guard: logged in but no profile → send to complete-profile
+// Only redirect to complete-profile from the home page
+// Public pages (about, suggest, episode, show) are always accessible
 function RequireProfile({ children }) {
   const { user, profile, loading } = useAuth();
   if (loading) return null;
@@ -27,18 +28,24 @@ function App() {
         <div className="min-h-screen" style={{ background: "var(--color-bg)", color: "var(--color-text)" }}>
           <Navbar />
           <Routes>
-            <Route path="/" element={
-              <RequireProfile><Home /></RequireProfile>
-            } />
+            {/* Home requires profile */}
+            <Route path="/" element={<RequireProfile><Home /></RequireProfile>} />
+
+            {/* Always public */}
+            <Route path="/about" element={<About />} />
+            <Route path="/suggest" element={<Suggest />} />
+            <Route path="/episode/:id" element={<Episode />} />
+            <Route path="/show/:slug" element={<Show />} />
+            <Route path="/profile/:username" element={<Profile />} />
+
+            {/* Auth flows */}
             <Route path="/login" element={<Login />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
-            <Route path="/episode/:id" element={<Episode />} />
-            <Route path="/profile/:username" element={<Profile />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/suggest" element={<Suggest />} />
-            <Route path="/show/:slug" element={<Show />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/about" element={<About />} />
+
+            {/* Admin */}
+            <Route path="/admin" element={<Admin />} />
+
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
