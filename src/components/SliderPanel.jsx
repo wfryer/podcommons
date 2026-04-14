@@ -3,11 +3,11 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply })
 
   const sliderConfig = [
     { key: "discoveryVsFamiliar", leftLabel: "Discovery", rightLabel: "Familiar",
-      desc: "New shows vs. shows you already know" },
+      desc: "New shows vs. shows already indexed" },
     { key: "recentVsTimeless", leftLabel: "Recent", rightLabel: "Timeless",
       desc: "Newest episodes vs. highly-rated older ones" },
-    { key: "myTasteVsCommunity", leftLabel: "My Taste", rightLabel: "Community",
-      desc: "Wes's signals vs. what the community loves" },
+    { key: "myTasteVsCommunity", leftLabel: "Wes' Tastes", rightLabel: "Community",
+      desc: "Wes' signals vs. what the community likes" },
   ];
 
   const isDiscover = activeTab === "discover";
