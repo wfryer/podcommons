@@ -4,6 +4,7 @@ import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, ge
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "../components/WhyThisModal";
+import AudioPlayer from "../components/AudioPlayer";
 import ShareSheet from "../components/ShareSheet";
 
 function formatDuration(seconds) {
@@ -203,14 +204,13 @@ export default function Episode() {
         </div>
       </div>
 
-      {/* Listen button */}
-      {episode.episodeUrl && (
-        <a href={episode.episodeUrl} target="_blank" rel="noopener noreferrer"
-          className="btn-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem",
-            marginBottom: "1.5rem", textDecoration: "none" }}>
-          ▶ Listen to this episode ↗
-        </a>
+      {/* Audio Player */}
+      {(episode.audioUrl || episode.episodeUrl) && (
+        <AudioPlayer
+          audioUrl={episode.audioUrl}
+          episodeUrl={episode.episodeUrl}
+          title={episode.title}
+        />
       )}
 
       {/* Description — HTML stripped */}

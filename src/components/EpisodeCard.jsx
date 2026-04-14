@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { doc, updateDoc, increment, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -49,16 +49,29 @@ export default function EpisodeCard({ episode }) {
   const [imgError, setImgError] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef(null);
   const chip = getWhyChip(episode);
   const duration = formatDuration(episode.duration);
   const date = formatDate(episode.publishedAt);
   const initials = (episode.podcastTitle || "?").slice(0, 2).toUpperCase();
   const placeholderBg = colorFromString(episode.podcastTitle);
+  const hasAudio = !!episode.audioUrl;
 
   useEffect(() => {
     if (!user) return;
     checkExistingInteractions();
   }, [user, episode.id]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const checkExistingInteractions = async () => {
     try {
@@ -73,6 +86,33 @@ export default function EpisodeCard({ episode }) {
     } catch (err) {}
   };
 
+  const handlePlay = (e) => {
+    e.preventDefault();
+    if (!hasAudio) {
+      // No audio URL — open external link
+      window.open(episode.episodeUrl, "_blank");
+      return;
+    }
+    if (playing) {
+      audioRef.current?.pause();
+      setPlaying(false);
+    } else {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(episode.audioUrl);
+        audioRef.current.onended = () => setPlaying(false);
+        audioRef.current.onerror = () => {
+          // Audio failed to load — fall back to external link
+          setPlaying(false);
+          window.open(episode.episodeUrl || episode.audioUrl, "_blank");
+        };
+      }
+      audioRef.current.play().catch(() => {
+        window.open(episode.episodeUrl || episode.audioUrl, "_blank");
+      });
+      setPlaying(true);
+    }
+  };
+
   const handleLike = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -81,16 +121,14 @@ export default function EpisodeCard({ episode }) {
     if (!snap.empty) {
       await deleteDoc(doc(db, "interactions", snap.docs[0].id));
       await updateDoc(doc(db, "episodes", episode.id), { likeCount: increment(-1) });
-      setLiked(false);
-      setLikeCount(c => Math.max(0, c - 1));
+      setLiked(false); setLikeCount(c => Math.max(0, c - 1));
     } else {
       await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: episode.id, type: "like",
         status: profile?.role === "new" ? "pending" : "approved", createdAt: new Date(),
       });
       await updateDoc(doc(db, "episodes", episode.id), { likeCount: increment(1) });
-      setLiked(true);
-      setLikeCount(c => c + 1);
+      setLiked(true); setLikeCount(c => c + 1);
     }
   };
 
@@ -102,16 +140,14 @@ export default function EpisodeCard({ episode }) {
     if (!snap.empty) {
       await deleteDoc(doc(db, "interactions", snap.docs[0].id));
       await updateDoc(doc(db, "episodes", episode.id), { favoriteCount: increment(-1) });
-      setFavorited(false);
-      setFavoriteCount(c => Math.max(0, c - 1));
+      setFavorited(false); setFavoriteCount(c => Math.max(0, c - 1));
     } else {
       await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: episode.id, type: "favorite",
         status: "approved", createdAt: new Date(),
       });
       await updateDoc(doc(db, "episodes", episode.id), { favoriteCount: increment(1) });
-      setFavorited(true);
-      setFavoriteCount(c => c + 1);
+      setFavorited(true); setFavoriteCount(c => c + 1);
     }
   };
 
@@ -132,12 +168,12 @@ export default function EpisodeCard({ episode }) {
       <Link to={`/episode/${episode.id}`} style={{ textDecoration: "none" }}>
         <div className="podcast-card" style={{ padding: "1rem", display: "flex", gap: "1rem" }}>
 
-          {/* Artwork */}
-          <div style={{ flexShrink: 0 }}>
+          {/* Artwork with play button overlay */}
+          <div style={{ flexShrink: 0, position: "relative" }}>
             {episode.imageUrl && !imgError ? (
               <img src={episode.imageUrl} alt={episode.podcastTitle}
                 onError={() => setImgError(true)}
-                style={{ width: 80, height: 80, borderRadius: "10px", objectFit: "cover" }} />
+                style={{ width: 80, height: 80, borderRadius: "10px", objectFit: "cover", display: "block" }} />
             ) : (
               <div style={{
                 width: 80, height: 80, borderRadius: "10px", background: placeholderBg,
@@ -146,12 +182,35 @@ export default function EpisodeCard({ episode }) {
                 color: "rgba(255,255,255,0.85)", fontFamily: "var(--font-display)"
               }}>{initials}</div>
             )}
+            {/* Play button overlay */}
+            <button
+              onClick={handlePlay}
+              title={playing ? "Pause" : hasAudio ? "Play" : "Listen externally"}
+              style={{
+                position: "absolute", inset: 0, borderRadius: "10px",
+                background: playing ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0)",
+                border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.2s",
+                opacity: playing ? 1 : 0,
+              }}
+              onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+              onMouseLeave={e => { if (!playing) e.currentTarget.style.opacity = "0"; }}
+            >
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: "rgba(245,158,11,0.9)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.9rem", color: "#000"
+              }}>
+                {playing ? "⏸" : "▶"}
+              </div>
+            </button>
           </div>
 
           {/* Content */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.15rem" }}>
-              {/* Show name — no Host badge here, just the chip handles that */}
               <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--color-accent)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 {episode.podcastTitle || "Podcast"}
               </p>
@@ -186,7 +245,7 @@ export default function EpisodeCard({ episode }) {
                 style={{
                   background: "none", border: "none", cursor: user ? "pointer" : "default",
                   fontSize: "0.78rem", color: liked ? "var(--color-accent)" : "var(--color-text-muted)",
-                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0, transition: "color 0.15s"
+                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0
                 }}>
                 {liked ? "♥" : "♡"} {likeCount}
               </button>
@@ -195,13 +254,26 @@ export default function EpisodeCard({ episode }) {
                 style={{
                   background: "none", border: "none", cursor: user ? "pointer" : "default",
                   fontSize: "0.78rem", color: favorited ? "var(--color-accent)" : "var(--color-text-muted)",
-                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0, transition: "color 0.15s"
+                  display: "flex", alignItems: "center", gap: "0.2rem", padding: 0
                 }}>
                 {favorited ? "★" : "☆"} {favoriteCount}
               </button>
               <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
                 💬 {episode.commentCount || 0}
               </span>
+
+              {/* Play/Listen button */}
+              <button onClick={handlePlay}
+                style={{
+                  background: "none", border: "1px solid var(--color-border)",
+                  borderRadius: "6px", padding: "0.18rem 0.55rem",
+                  fontSize: "0.72rem",
+                  color: playing ? "var(--color-accent)" : "var(--color-text-muted)",
+                  cursor: "pointer",
+                }}>
+                {playing ? "⏸ Pause" : hasAudio ? "▶ Play" : "↗ Listen"}
+              </button>
+
               <button onClick={e => { e.preventDefault(); setShowShare(true); }}
                 style={{
                   background: "none", border: "1px solid var(--color-border)",
@@ -211,6 +283,7 @@ export default function EpisodeCard({ episode }) {
                 }}>
                 Share ↗
               </button>
+
               {user && (
                 <button onClick={handleFlag}
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.75rem", color: "var(--color-text-muted)", padding: 0 }}
