@@ -187,13 +187,22 @@ function ActivityFeed({ userId, isOwnProfile }) {
           return dateB - dateA;
         })
         .slice(0, 30);
-      setActivity(items);
+
+      // Fetch episode titles
+      const withEpisodes = await Promise.all(items.map(async item => {
+        if (!item.episodeId) return item;
+        try {
+          const epSnap = await getDoc(doc(db, "episodes", item.episodeId));
+          return { ...item, episode: epSnap.exists() ? { id: epSnap.id, ...epSnap.data() } : null };
+        } catch { return item; }
+      }));
+      setActivity(withEpisodes);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
 
-  const typeIcon = { like: "♥", favorite: "★", comment: "💬", queue: "🎧" };
-  const typeLabel = { like: "liked", favorite: "favorited", comment: "commented on", queue: "queued" };
+  const typeIcon = { like: "♥", favorite: "★", comment: "💬" };
+  const typeLabel = { like: "liked", favorite: "favorited", comment: "commented on" };
 
   if (loading) return <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Loading...</p>;
   if (activity.length === 0) return (
@@ -211,9 +220,14 @@ function ActivityFeed({ userId, isOwnProfile }) {
               {typeIcon[item.type] || "•"}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
-                {typeLabel[item.type] || item.type} an episode
-                {item.content && <span style={{ color: "var(--color-text)" }}> · "{item.content.slice(0, 60)}"</span>}
+              <p style={{ fontSize: "0.82rem", color: "var(--color-text)",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {item.episode ? decodeEntities(item.episode.title) : "an episode"}
+              </p>
+              <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+                {typeLabel[item.type] || item.type}
+                {item.content && <span> · "{item.content.slice(0, 60)}"</span>}
+                {item.episode?.podcastTitle && <span> · {decodeEntities(item.episode.podcastTitle)}</span>}
               </p>
             </div>
             <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", flexShrink: 0 }}>
@@ -324,6 +338,15 @@ export default function Profile() {
 
   const isOwnProfile = user?.uid === profileData.id;
   const isAdmin = currentUserProfile?.role === "admin";
+  const [visibility, setVisibility] = useState(profileData.profileVisibility || "public");
+
+  const updateVisibility = async (newVis) => {
+    setVisibility(newVis);
+    try {
+      const { updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", profileData.id), { profileVisibility: newVis });
+    } catch (err) { console.error(err); }
+  };
 
   const TABS = [
     { id: "queue", label: "🎧 Queue" },
@@ -374,6 +397,23 @@ export default function Profile() {
             Member since {formatDate(profileData.createdAt)}
             {profileData.communityGroups?.length > 0 && ` · ${profileData.communityGroups.join(", ")}`}
           </p>
+          {isOwnProfile && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.6rem" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>Profile visibility:</span>
+              {["public", "members", "private"].map(v => (
+                <button key={v} onClick={() => updateVisibility(v)}
+                  style={{
+                    fontSize: "0.7rem", padding: "0.15rem 0.5rem", borderRadius: "999px",
+                    cursor: "pointer",
+                    border: `1px solid ${visibility === v ? "var(--color-accent)" : "var(--color-border)"}`,
+                    background: visibility === v ? "rgba(245,158,11,0.15)" : "transparent",
+                    color: visibility === v ? "var(--color-accent)" : "var(--color-text-muted)",
+                  }}>
+                  {v === "public" ? "🌐 Public" : v === "members" ? "👥 Members" : "🔒 Private"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Edit profile button for own profile */}

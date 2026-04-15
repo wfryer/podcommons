@@ -47,7 +47,8 @@ export default function Home() {
       let eps = [];
 
       if (activeTab === "latest") {
-        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(30)));
+        const latestLimit = selectedTopic ? 500 : 30;
+        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(latestLimit)));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
@@ -75,7 +76,7 @@ export default function Home() {
 
       // Apply topic filter client-side
       const filtered = selectedTopic
-        ? eps.filter(e => e.topics?.includes(selectedTopic))
+        ? eps.filter(e => e.topics?.length > 0 && e.topics.includes(selectedTopic))
         : eps;
       setEpisodes(filtered);
     } catch (err) {
@@ -158,6 +159,8 @@ export default function Home() {
           <p style={{ fontSize: "0.85rem" }}>
             {activeTab === "adminpicks" ? "Episodes from your five shows will appear here."
               : activeTab === "community" ? "Like some episodes to get the community feed going!"
+              : activeTab === "discover" && selectedTopic
+              ? `No episodes tagged "${selectedTopic}" yet — topics are assigned by AI as new episodes are imported.`
               : "Import your OPML file in the Admin dashboard to start pulling in podcast episodes."}
           </p>
         </div>
