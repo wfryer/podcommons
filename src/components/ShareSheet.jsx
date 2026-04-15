@@ -1,12 +1,39 @@
+import { useAuth } from "../hooks/useAuth.jsx";
+import { decodeEntities } from "../utils/textUtils";
+
 export default function ShareSheet({ episode, onClose }) {
-  const episodeUrl = `${window.location.origin}/episode/${episode.id}`;
-  const shareText = `🎙️ ${episode.title}\n${episode.podcastTitle}\n\n${episodeUrl}\n\n#podcommons #podcasts`;
-  const blueskyText = encodeURIComponent(shareText.slice(0, 300));
-  const mastodonText = encodeURIComponent(shareText.slice(0, 300));
+  const { profile } = useAuth();
+  const title = decodeEntities(episode?.title || "");
+  const url = `https://podcasts.wesfryer.com/episode/${episode?.id}`;
+  const text = `🎙️ "${title}" — ${url} #podcommons`;
+
+  // Use user's Mastodon server if set, otherwise prompt them to set it
+  const mastodonServer = profile?.mastodonServer;
+  const mastodonHandle = profile?.mastodonHandle;
+
+  const shareToBluesky = () => {
+    window.open(`https://bsky.app/intent/compose?text=${encodeURIComponent(text)}`, "_blank");
+    onClose();
+  };
+
+  const shareToMastodon = () => {
+    if (mastodonServer) {
+      window.open(`https://${mastodonServer}/share?text=${encodeURIComponent(text)}`, "_blank");
+    } else {
+      // Prompt for server if not set
+      const server = window.prompt(
+        "Enter your Mastodon server (e.g. mastodon.social, triangletoot.party):\n\nTip: Save your server in your profile settings to skip this step next time!"
+      );
+      if (server) {
+        window.open(`https://${server.trim()}/share?text=${encodeURIComponent(text)}`, "_blank");
+      }
+    }
+    onClose();
+  };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(episodeUrl);
-    alert("Link copied!");
+    navigator.clipboard.writeText(url);
+    onClose();
   };
 
   return (
@@ -17,54 +44,61 @@ export default function ShareSheet({ episode, onClose }) {
     }} onClick={onClose}>
       <div style={{
         background: "var(--color-surface)", border: "1px solid var(--color-border)",
-        borderRadius: "16px", padding: "1.5rem", maxWidth: 480, width: "100%"
+        borderRadius: "16px", padding: "1.5rem", width: "100%", maxWidth: 480,
       }} onClick={e => e.stopPropagation()}>
 
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
-          <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1rem" }}>Share this episode</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer" }}>✕</button>
-        </div>
-
-        <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-          {episode.title}
+        <p style={{ fontWeight: 600, fontFamily: "var(--font-display)", marginBottom: "0.25rem" }}>
+          Share this episode
+        </p>
+        <p style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginBottom: "1.25rem",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {title}
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          <a href={`https://bsky.app/intent/compose?text=${blueskyText}`} target="_blank" rel="noopener noreferrer"
-            style={{
-              display: "flex", alignItems: "center", gap: "0.75rem",
+          <button onClick={shareToBluesky}
+            style={{ display: "flex", alignItems: "center", gap: "0.75rem",
               padding: "0.75rem 1rem", borderRadius: "10px",
-              background: "rgba(0,133,255,0.1)", border: "1px solid rgba(0,133,255,0.2)",
-              color: "var(--color-text)", textDecoration: "none", fontSize: "0.875rem", fontWeight: 500
-            }}>
-            <span style={{ fontSize: "1.2rem" }}>🦋</span> Share on Bluesky
-          </a>
+              background: "rgba(0,133,255,0.1)", border: "1px solid rgba(0,133,255,0.3)",
+              color: "#0085ff", cursor: "pointer", fontSize: "0.9rem", fontWeight: 500 }}>
+            🦋 Share on Bluesky
+          </button>
 
-          <a href={`https://mastodon.social/share?text=${mastodonText}`} target="_blank" rel="noopener noreferrer"
-            style={{
-              display: "flex", alignItems: "center", gap: "0.75rem",
+          <button onClick={shareToMastodon}
+            style={{ display: "flex", alignItems: "center", gap: "0.75rem",
               padding: "0.75rem 1rem", borderRadius: "10px",
-              background: "rgba(99,100,255,0.1)", border: "1px solid rgba(99,100,255,0.2)",
-              color: "var(--color-text)", textDecoration: "none", fontSize: "0.875rem", fontWeight: 500
-            }}>
-            <span style={{ fontSize: "1.2rem" }}>🐘</span> Share on Mastodon
-          </a>
+              background: "rgba(99,100,255,0.1)", border: "1px solid rgba(99,100,255,0.3)",
+              color: "#6364ff", cursor: "pointer", fontSize: "0.9rem", fontWeight: 500 }}>
+            🐘 Share on Mastodon
+            {mastodonServer && (
+              <span style={{ fontSize: "0.72rem", opacity: 0.7, marginLeft: "auto" }}>
+                via {mastodonServer}
+              </span>
+            )}
+          </button>
 
           <button onClick={copyLink}
-            style={{
-              display: "flex", alignItems: "center", gap: "0.75rem",
+            style={{ display: "flex", alignItems: "center", gap: "0.75rem",
               padding: "0.75rem 1rem", borderRadius: "10px",
-              background: "var(--color-border)", border: "1px solid var(--color-border)",
-              color: "var(--color-text)", cursor: "pointer", fontSize: "0.875rem", fontWeight: 500,
-              width: "100%"
-            }}>
-            <span style={{ fontSize: "1.2rem" }}>🔗</span> Copy link
+              background: "var(--color-bg)", border: "1px solid var(--color-border)",
+              color: "var(--color-text-muted)", cursor: "pointer", fontSize: "0.9rem" }}>
+            🔗 Copy link
           </button>
         </div>
 
-        <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginTop: "0.75rem", textAlign: "center" }}>
-          All shares include <strong>#podcommons</strong>
-        </p>
+        {!mastodonServer && profile && (
+          <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginTop: "0.75rem", textAlign: "center" }}>
+            💡 <a href="/settings" style={{ color: "var(--color-accent)" }}>Set your Mastodon server</a> in profile settings to skip the prompt
+          </p>
+        )}
+
+        <button onClick={onClose}
+          style={{ width: "100%", marginTop: "0.75rem", padding: "0.6rem",
+            background: "none", border: "1px solid var(--color-border)",
+            borderRadius: "10px", color: "var(--color-text-muted)",
+            cursor: "pointer", fontSize: "0.85rem" }}>
+          Cancel
+        </button>
       </div>
     </div>
   );

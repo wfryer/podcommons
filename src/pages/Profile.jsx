@@ -320,7 +320,28 @@ export default function Profile() {
             {activeTab === "activity" && "📋 Recent Activity"}
           </h2>
 
-          {itemsLoading ? (
+          {!user && !isOwnProfile ? (
+            <div style={{
+              textAlign: "center", padding: "2.5rem 1.5rem",
+              border: "1px dashed var(--color-border)", borderRadius: "12px"
+            }}>
+              <p style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🎧</p>
+              <p style={{ fontWeight: 600, marginBottom: "0.4rem" }}>
+                Join the community to view member activity and favorites
+              </p>
+              <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
+                {profileData.profileVisibility === "private"
+                  ? "This member's activity is private."
+                  : `See what @${profileData.username} has been listening to, liking, and saving.`}
+              </p>
+              {profileData.profileVisibility !== "private" && (
+                <Link to="/login" className="btn-primary"
+                  style={{ textDecoration: "none", padding: "0.6rem 1.5rem" }}>
+                  Sign in to view
+                </Link>
+              )}
+            </div>
+          ) : itemsLoading ? (
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Loading...</p>
           ) : items.length === 0 ? (
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
@@ -388,3 +409,4 @@ export default function Profile() {
     </div>
   );
 }
+

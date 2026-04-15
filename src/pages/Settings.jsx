@@ -24,6 +24,8 @@ export default function Settings() {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [socialLink, setSocialLink] = useState("");
+  const [mastodonHandle, setMastodonHandle] = useState("");
+  const [mastodonServer, setMastodonServer] = useState("");
   const [groups, setGroups] = useState([]);
   const [usernameError, setUsernameError] = useState("");
   const [error, setError] = useState("");
@@ -36,6 +38,8 @@ export default function Settings() {
       setUsername(profile.username || "");
       setBio(profile.bio || "");
       setSocialLink(profile.socialLink || "");
+      setMastodonHandle(profile.mastodonHandle || "");
+      setMastodonServer(profile.mastodonServer || "");
       setGroups(profile.communityGroups || []);
     }
   }, [profile, user]);
@@ -65,6 +69,8 @@ export default function Settings() {
         username: username.toLowerCase(),
         bio,
         socialLink,
+        mastodonHandle: mastodonHandle.replace("@", "").trim(),
+        mastodonServer: mastodonServer.trim().replace(/\/+$/, ""),
         communityGroups: groups,
       });
       await refreshProfile();
@@ -108,12 +114,28 @@ export default function Settings() {
               placeholder="A short description about yourself" rows={2} maxLength={101} />
           </div>
 
-          <div className="mb-5">
+          <div className="mb-4">
             <label style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", display: "block", marginBottom: "0.4rem" }}>
               Social / Web Link
             </label>
             <input value={socialLink} onChange={e => setSocialLink(e.target.value)}
-              placeholder="https://mastodon.social/@you" />
+              placeholder="https://wesfryer.com" />
+          </div>
+
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", display: "block", marginBottom: "0.4rem" }}>
+              Mastodon
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <input value={mastodonHandle} onChange={e => setMastodonHandle(e.target.value)}
+                placeholder="yourhandle" style={{ flex: 1 }} />
+              <span style={{ display: "flex", alignItems: "center", color: "var(--color-text-muted)", fontSize: "1rem" }}>@</span>
+              <input value={mastodonServer} onChange={e => setMastodonServer(e.target.value)}
+                placeholder="triangletoot.party" style={{ flex: 2 }} />
+            </div>
+            <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginTop: "0.3rem" }}>
+              Your Mastodon handle and server (e.g. wesfryer @ triangletoot.party)
+            </p>
           </div>
 
           <div className="mb-6">
