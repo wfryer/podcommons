@@ -32,6 +32,7 @@ export default function Episode() {
   const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [queued, setQueued] = useState(false);
+  const [featured, setFeatured] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [commentText, setCommentText] = useState("");
@@ -52,6 +53,7 @@ export default function Episode() {
       setEpisode({ id: snap.id, ...data });
       setLikeCount(data.likeCount || 0);
       setFavoriteCount(data.favoriteCount || 0);
+      setFeatured(data.featuredByAdmin || false);
     }
     // Check existing interactions
     if (user) {
@@ -122,6 +124,13 @@ export default function Episode() {
       setFavorited(true);
       setFavoriteCount(c => c + 1);
     }
+  };
+
+  const handleFeature = async () => {
+    if (!user) return;
+    const newVal = !featured;
+    setFeatured(newVal);
+    await updateDoc(doc(db, "episodes", id), { featuredByAdmin: newVal });
   };
 
   const handleQueue = async () => {
@@ -317,6 +326,20 @@ export default function Episode() {
               cursor: "pointer", fontSize: "0.875rem"
             }}>
             🚩 Flag
+          </button>
+        )}
+
+        {profile?.role === "admin" && (
+          <button onClick={handleFeature}
+            style={{
+              display: "flex", alignItems: "center", gap: "0.4rem",
+              padding: "0.5rem 1rem", borderRadius: "8px",
+              background: featured ? "rgba(245,158,11,0.15)" : "var(--color-surface)",
+              border: `1px solid ${featured ? "var(--color-accent)" : "var(--color-border)"}`,
+              color: featured ? "var(--color-accent)" : "var(--color-text-muted)",
+              cursor: "pointer", fontSize: "0.875rem"
+            }}>
+            {featured ? "⭐ Admin Pick ✓" : "☆ Feature as Admin Pick"}
           </button>
         )}
       </div>

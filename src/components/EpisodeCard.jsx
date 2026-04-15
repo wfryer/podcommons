@@ -52,6 +52,7 @@ export default function EpisodeCard({ episode }) {
   const [showShare, setShowShare] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [queued, setQueued] = useState(false);
+  const [featured, setFeatured] = useState(episode.featuredByAdmin || false);
   const audioRef = useRef(null);
   const chip = getWhyChip(episode);
   const duration = formatDuration(episode.duration);
@@ -172,6 +173,14 @@ export default function EpisodeCard({ episode }) {
       });
       setQueued(true);
     }
+  };
+
+  const handleFeature = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    const newVal = !featured;
+    setFeatured(newVal);
+    await updateDoc(doc(db, "episodes", episode.id), { featuredByAdmin: newVal });
   };
 
   const handleFlag = async (e) => {
@@ -320,6 +329,15 @@ export default function EpisodeCard({ episode }) {
                 <button onClick={handleFlag}
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.75rem", color: "var(--color-text-muted)", padding: 0 }}
                   title="Flag this episode">🚩</button>
+              )}
+              {user && profile?.role === "admin" && (
+                <button onClick={handleFeature}
+                  style={{ background: "none", border: "none", cursor: "pointer",
+                    fontSize: "0.75rem", padding: 0,
+                    color: featured ? "var(--color-accent)" : "var(--color-text-muted)" }}
+                  title={featured ? "Unfeature episode" : "Feature as Admin Pick"}>
+                  {featured ? "⭐" : "☆"}
+                </button>
               )}
             </div>
           </div>
