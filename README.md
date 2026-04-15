@@ -1,13 +1,13 @@
 # 🎙️ PodCommons
 
-**A Community Podcast Discovery Engine with Transparent Algorithms**
+**A Community Podcast Discovery Engine with Transparent, AI-Powered Algorithms**
 
 PodCommons is an open-source platform for discovering, curating, and sharing podcasts — built around the radical idea that you should be able to *see and adjust* the algorithm that shapes your feed.
 
 > *Listen together. Understand the algorithm. Amplify what matters.*
 
 **Live instance:** [podcasts.wesfryer.com](https://podcasts.wesfryer.com)  
-**Built by:** [Dr. Wes Fryer](https://wesfryer.com) · [#podcommons](https://bsky.app/search?q=%23podcommons)
+**Built by:** [Dr. Wes Fryer](https://wesfryer.com) with Claude AI · [#podcommons](https://bsky.app/search?q=%23podcommons)
 
 ---
 
@@ -15,43 +15,68 @@ PodCommons is an open-source platform for discovering, curating, and sharing pod
 
 Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 
-- **🧠 "Why this?" transparency layer** — every recommended episode shows exactly which signals surfaced it, with a visual breakdown of contributing factors
-- **⚙️ Algorithm tuning sliders** — adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time
-- **📡 Open web values** — built on RSS, OPML, Mastodon, and Pinboard; produces its own RSS feeds so your curation is portable
-- **🏘️ Community-first** — Google Auth, trust tiers, moderation queue, and community groups make this a real community platform, not just a solo recommendation engine
+- **🤖 AI-powered episode analysis** — Every new episode is analyzed by Google Gemini Flash at import time, assigning topic tags and a 0–1 relevance score against the curator's taste profile
+- **🧠 "Why this?" transparency layer** — Every recommended episode shows exactly which signals surfaced it, with a visual breakdown of contributing factors
+- **⚙️ Algorithm tuning sliders** — Adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time. Settings saved to your profile
+- **🏷️ Topic filtering** — Filter the feed by topic: AI & Technology, Democracy & Civic, Education, Faith, History, and 16 more categories
+- **📡 Open web values** — Built on RSS, OPML, Mastodon, Bluesky, and Pinboard. Produces its own RSS feeds so your curation is portable
 
 ---
 
 ## 🚀 Features
 
 ### Discovery
-- Import your podcast subscriptions via OPML file
-- Live RSS polling for new episodes (every 4 hours)
-- Algorithmic discovery feed with tunable weights
-- Chronological, Wes Picks, and Community feed tabs
+- Import podcast subscriptions via OPML (420+ feeds supported)
+- Automatic RSS polling every 4 hours via Firebase Cloud Functions
+- Manual refresh with real-time status in admin dashboard
+- AI episode analysis: topic classification + taste scoring via Gemini Flash
+- Four feed tabs: 🧠 Discover / 🕐 Latest / ⭐ Admin Picks / 🔥 Community
+- Algorithm tuning sliders with persistent settings
 - "Why this?" transparency chip on every episode card
+- Topic filter bar with 17 categories
 
-### Community
+### Audio
+- ▶ Play button overlay on episode artwork
+- Embedded audio player on episode detail pages
+- ⟨⟨ 30s / ⟩⟩ 30s skip buttons
+- Scrubber with time display
+- Graceful fallback to external link if audio fails
+
+### Community & Profiles
 - Google OAuth login (no password required)
 - Gravatar avatars with identicon fallback
 - Three-tier trust system: New → Trusted → Admin
-- Moderation queue for new user interactions
-- Like, Favorite, and Comment on episodes
-- Community group selection at registration
+- Public member profiles with activity feeds, favorites, and listening queues
+- Profile visibility: Public / Members Only / Private
+- 🎧 Listening queue — add episodes from any card or detail page
+- ♥ Like / ★ Favorite / 💬 Comment on episodes
+- Toggle unlike/unfavorite with real-time counts
+- Suggest a podcast or episode (from profile page)
+- Mastodon handle + server stored per user for one-click sharing
 
-### Curation & Safety
-- Feed exclusion — hide any imported feed from public view
-- Episode and feed flagging with instant auto-hide
-- Podcast suggestion queue (always moderated)
-- Registration gate: Open / Invite Code / Closed modes
-- Invite code management with usage tracking
+### Content Safety & Moderation
+- Episode and feed flagging (goes to moderation queue, does NOT auto-hide)
+- Admin can permanently delete feeds (added to blocked list)
+- Moderation queue: Approve / Reject / Approve + Trust User
+- Flag queue: Restore / Keep Hidden / Remove Permanently
+- Suggestions queue in admin dashboard
+- RSS poll error log — see which feeds are failing and why
+
+### Admin Dashboard
+- **⚙️ System** — RSS poll status, manual refresh, registration gate
+- **💬 Moderation** — pending likes/comments with trust controls
+- **🚩 Flags** — flagged content with restoration/removal options
+- **📡 Feeds** — search, filter, show/hide/delete any of 420+ feeds
+- **👥 Users** — role management (New/Trusted/Admin)
+- **💡 Suggestions** — pending podcast/episode suggestions
 
 ### Open Web
-- Mastodon and Pinboard live polling
-- Pocket Casts listening history import (screenshot OCR)
-- PodCommons RSS output feeds (`/feed.xml`, `/feed/wes-picks.xml`, `/feed/community.xml`)
-- RSS autodiscovery in HTML `<head>`
-- Share to Bluesky and Mastodon with `#podcommons`
+- Mastodon polling (imports #podcastrecc posts)
+- Pinboard polling (imports #podcastrecc bookmarks)
+- Pocket Casts listening history import
+- Share to Bluesky and Mastodon with #podcommons
+- Uses user's actual Mastodon server for sharing
+- PodCommons RSS output feeds (coming soon)
 
 ---
 
@@ -62,10 +87,10 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 | Frontend | React + Vite + Tailwind CSS |
 | Authentication | Firebase Auth (Google OAuth) |
 | Database | Firestore |
-| Background jobs | Firebase Cloud Functions |
-| AI layer | Google Gemini API (OCR + topic clustering) |
+| Background jobs | Firebase Cloud Functions v2 (Node.js 24) |
+| AI analysis | Google Gemini Flash API |
 | Hosting | Firebase Hosting |
-| Mobile (Phase 2) | Capacitor (iOS + Android) |
+| Mobile (planned) | Capacitor (iOS + Android) |
 
 ---
 
@@ -73,79 +98,64 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 
 ### Prerequisites
 - Node.js v18+
-- A free [Firebase](https://firebase.google.com) account
+- A free [Firebase](https://firebase.google.com) account (Blaze plan required for Cloud Functions)
 - A Google account
+- A [Google AI Studio](https://aistudio.google.com) API key for Gemini Flash
 
 ### 1. Fork and clone
 ```bash
 git clone https://github.com/YOUR_USERNAME/podcommons.git
 cd podcommons
 npm install
+cd functions && npm install && cd ..
 ```
 
 ### 2. Create a Firebase project
 1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Create a new project (disable Google Analytics)
-3. Enable **Authentication** → Sign-in providers → **Google**
-4. Enable **Firestore Database** → Start in test mode → `nam5` region
-5. Add a **Web app** → copy the `firebaseConfig` object
+2. Create a new project
+3. Enable **Authentication** → Google sign-in
+4. Enable **Firestore** → Start in production mode → `nam5` region
+5. Upgrade to **Blaze plan** (required for Cloud Functions)
+6. Add a **Web app** → copy the `firebaseConfig`
 
-### 3. Configure Firebase
+### 3. Configure environment
 ```bash
-npm install -g firebase-tools
-firebase login
-firebase init  # Select: Firestore, Functions, Hosting
+cp env.example .env
+# Edit .env and add your VITE_ADMIN_TOKEN
 ```
 
-Update `src/firebase.js` with your `firebaseConfig` values.
+Update `src/firebase.js` with your `firebaseConfig`.
 
-### 4. Set up Firestore rules
+### 4. Set Firebase secrets
+```bash
+firebase functions:secrets:set ADMIN_TOKEN
+firebase functions:secrets:set GEMINI_API_KEY
+```
+
+### 5. Deploy Firestore rules
 ```bash
 firebase deploy --only firestore:rules
 ```
 
-### 5. Run locally
+### 6. Run locally
 ```bash
 npm run dev
 ```
 
-Visit `http://localhost:5173` — sign in with Google and complete your profile.
+### 7. Set yourself as admin
+In Firebase Console → Firestore → `users` → your document → set `role` to `"admin"`.
 
-### 6. Set yourself as admin
-In Firebase Console → Firestore → `users` collection → your document → change `role` to `"admin"`.
-
-### 7. Import your podcasts
+### 8. Import your podcasts
+Open Firestore rules to allow writes temporarily, then:
 ```bash
-node importOPML.mjs path/to/your-subscriptions.opml
+node importOPML.mjs path/to/subscriptions.opml
 ```
 
-### 8. Deploy
+### 9. Deploy everything
 ```bash
 npm run build
 firebase deploy
 ```
-
----
-
-## 📡 Your PodCommons RSS Feeds
-
-Once deployed, your curated recommendations are available as RSS feeds:
-
-| Feed | URL |
-|---|---|
-| Discovery | `yoursite.com/feed.xml` |
-| Your Picks | `yoursite.com/feed/wes-picks.xml` |
-| Community | `yoursite.com/feed/community.xml` |
-
-Subscribe to these in Flipboard, Reeder, or any RSS reader. Connect them to your [Federated Reader Bot](https://github.com/wfryer/federated-reader-bot) to auto-post picks to Mastodon.
-
----
-
-## 🎓 Educational Use
-
-PodCommons was designed as a **media literacy teaching tool** as much as a podcast platform. The algorithm transparency layer — especially the "Why this?" modal with its visual signal breakdown — makes abstract concepts about recommendation systems concrete and interactive.
-
-See `docs/MEDIA_LITERACY.md` for classroom discussion prompts, comparison activities (PodCommons vs. Spotify vs. Apple Podcasts), and student project ideas.
 
 ---
 
@@ -154,30 +164,60 @@ See `docs/MEDIA_LITERACY.md` for classroom discussion prompts, comparison activi
 ```
 podcommons/
 ├── src/
-│   ├── components/     # EpisodeCard, Navbar, SliderPanel, WhyThisModal...
-│   ├── pages/          # Home, Episode, Show, Admin, Profile...
-│   ├── hooks/          # useAuth
-│   └── firebase.js     # Firebase initialization
-├── functions/          # Firebase Cloud Functions (RSS polling, etc.)
-├── public/images/      # Show artwork
-├── firestore.rules     # Security rules
-└── docs/               # Setup, algorithm, media literacy guides
+│   ├── components/       # EpisodeCard, AudioPlayer, Navbar, SliderPanel, TopicFilter...
+│   ├── pages/            # Home, Episode, Show, Profile, Admin, About, Settings...
+│   ├── hooks/            # useAuth
+│   ├── utils/            # algorithmScorer.js, textUtils.js
+│   └── firebase.js
+├── functions/
+│   └── index.js          # RSS polling + Gemini AI analysis Cloud Functions
+├── public/images/        # Show artwork
+├── firestore.rules
+└── firebase.json
 ```
+
+---
+
+## 🔮 Roadmap
+
+### High Priority
+- Fix login redirect race condition (profile check on sign-in)
+- PodCommons RSS output feeds (`/feed.xml`, `/feed/admin-picks.xml`, `/feed/community.xml`)
+- Larger listening queue button (mobile UX)
+- Mobile UX audit and improvements
+- Per-user personalized taste profiles (currently uses curator's listening history)
+
+### Medium Priority
+- Data export: OPML (full + by category), activity export (LLM-ready text file)
+- Podcast + episode search
+- Admin email notifications for flags and suggestions
+- Algorithmic transparency improvements (show AI taste score + reason on cards)
+- Listening progress tracking
+- Pocket Casts OCR upload UI (currently manual script)
+
+### Phase 2
+- Capacitor mobile app (iOS + Android)
+- Native Bluesky AT Protocol posting
+- Community group sub-feeds and RSS feeds
+- Email digest (weekly recommendations)
+- Embeddable episode widget
+- YouTube integration exploration
+- docs/MEDIA_LITERACY.md — classroom guide
+- docs/ALGORITHM.md — deep dive
+- docs/SETUP.md — deploy your own instance
+
+---
+
+## 🎓 Educational Use
+
+PodCommons was designed as a **media literacy teaching tool** as much as a podcast platform. The algorithm transparency layer makes abstract concepts about recommendation systems concrete and interactive.
 
 ---
 
 ## 🤝 Contributing
 
-PodCommons is open source under the MIT License. Fork it, deploy your own instance for your community, and share what you build with `#podcommons`.
-
-If you improve the core platform, pull requests are welcome!
+MIT License — fork it, deploy your own instance, share with `#podcommons`.
 
 ---
 
-## 📜 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-*PodCommons was built by Dr. Wes Fryer in April 2026 through a collaborative vibe-coding session. It is a living project and this README will grow with it.*
+*Built by Dr. Wes Fryer in April 2026 through collaborative vibe-coding sessions with Claude AI.*
