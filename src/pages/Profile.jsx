@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -91,9 +91,11 @@ export default function Profile() {
   const { username } = useParams();
   const { user, profile: currentUserProfile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("queue");
+  const urlTab = new URLSearchParams(location.search).get("tab");
+  const [activeTab, setActiveTab] = useState(urlTab || "queue");
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [visibility, setVisibility] = useState("public");

@@ -31,6 +31,7 @@ export default function Episode() {
   const [comments, setComments] = useState([]);
   const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [commentText, setCommentText] = useState("");
@@ -51,6 +52,16 @@ export default function Episode() {
       setEpisode({ id: snap.id, ...data });
       setLikeCount(data.likeCount || 0);
       setFavoriteCount(data.favoriteCount || 0);
+    }
+    // Check existing interactions
+    if (user) {
+      try {
+        const [qSnap] = await Promise.all([
+          getDocs(query(collection(db, "interactions"),
+            where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "queue")))
+        ]);
+        setQueued(!qSnap.empty);
+      } catch (err) {}
     }
     setLoading(false);
   };
@@ -111,6 +122,34 @@ export default function Episode() {
       setFavorited(true);
       setFavoriteCount(c => c + 1);
     }
+  };
+
+  const handleQueue = async () => {
+    if (!user) return;
+    const q = query(collection(db, "interactions"),
+      where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "queue"));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      setQueued(false);
+    } else {
+      await addDoc(collection(db, "interactions"), {
+        userId: user.uid, episodeId: id, type: "queue",
+        status: "approved", createdAt: new Date(),
+      });
+      setQueued(true);
+    }
+  };
+
+  const handleFlag = async () => {
+    if (!user) return;
+    const reason = window.prompt("Why are you flagging this?\n• Inappropriate\n• Spam\n• Misinformation\n• Broken link\n• Other");
+    if (!reason) return;
+    await addDoc(collection(db, "flags"), {
+      reportedBy: user.uid, targetType: "episode", targetId: id,
+      reason, status: "pending", createdAt: new Date(),
+    });
+    alert("Thanks for your report. An admin will review this episode.");
   };
 
   const handleComment = async () => {
@@ -252,6 +291,34 @@ export default function Episode() {
         <button onClick={() => setShowWhy(true)} className="why-chip" style={{ alignSelf: "center" }}>
           🧠 Why recommended?
         </button>
+
+        {user && (
+          <button onClick={handleQueue}
+            style={{
+              display: "flex", alignItems: "center", gap: "0.4rem",
+              padding: "0.5rem 1rem", borderRadius: "8px",
+              background: queued ? "rgba(245,158,11,0.15)" : "var(--color-surface)",
+              border: `1px solid ${queued ? "var(--color-accent)" : "var(--color-border)"}`,
+              color: queued ? "var(--color-accent)" : "var(--color-text-muted)",
+              cursor: "pointer", fontSize: "0.875rem"
+            }}>
+            🎧 {queued ? "In Queue ✓" : "Add to Queue"}
+          </button>
+        )}
+
+        {user && (
+          <button onClick={handleFlag}
+            style={{
+              display: "flex", alignItems: "center", gap: "0.4rem",
+              padding: "0.5rem 1rem", borderRadius: "8px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-muted)",
+              cursor: "pointer", fontSize: "0.875rem"
+            }}>
+            🚩 Flag
+          </button>
+        )}
       </div>
 
       {/* Topics */}

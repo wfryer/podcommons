@@ -55,6 +55,17 @@ export default function Navbar() {
             className="hover:text-white transition-colors hidden sm:block">
             About
           </Link>
+          {user && profile && (
+            <Link to={`/profile/${profile.username}?tab=queue`}
+              title="My Listening Queue"
+              style={{
+                color: "var(--color-text-muted)", fontSize: "1.1rem",
+                textDecoration: "none", display: "flex", alignItems: "center"
+              }}
+              className="hover:text-white transition-colors">
+              🎧
+            </Link>
+          )}
 
           {user ? (
             <div className="flex items-center gap-3">
