@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { collection, query, where, getDocs, orderBy, limit, doc, getDoc, addDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc, addDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { decodeEntities } from "../utils/textUtils";
@@ -343,7 +343,6 @@ export default function Profile() {
   const updateVisibility = async (newVis) => {
     setVisibility(newVis);
     try {
-      const { updateDoc } = await import("firebase/firestore");
       await updateDoc(doc(db, "users", profileData.id), { profileVisibility: newVis });
     } catch (err) { console.error(err); }
   };
