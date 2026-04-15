@@ -31,7 +31,7 @@ function PollStatus({ onRefresh }) {
     setPolling(true);
     setResult(null);
     try {
-      const url = `https://us-central1-podcommons-41064.cloudfunctions.net/manualRSSPoll?token=${ADMIN_TOKEN}&limit=50`;
+      const url = `https://manualrsspoll-wktvb3f5za-uc.a.run.app?token=${ADMIN_TOKEN}&limit=50`;
       const res = await fetch(url);
       const data = await res.json();
       setResult(data);
@@ -102,6 +102,24 @@ function PollStatus({ onRefresh }) {
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.75rem" }}>
         Automatic polling runs every 4 hours via Cloud Functions. Manual refresh polls 50 feeds at a time.
       </p>
+
+      {/* Error log */}
+      {status?.lastErrorLog?.length > 0 && (
+        <div style={{ marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.8rem", fontWeight: 600, color: "#f87171", marginBottom: "0.5rem" }}>
+            ⚠️ Last poll errors ({status.lastErrorLog.length})
+          </p>
+          <div style={{ background: "var(--color-bg)", borderRadius: "8px", padding: "0.75rem",
+            maxHeight: 200, overflowY: "auto", fontSize: "0.72rem", fontFamily: "monospace" }}>
+            {status.lastErrorLog.map((e, i) => (
+              <div key={i} style={{ marginBottom: "0.4rem", color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.3rem" }}>
+                <span style={{ color: "#f87171" }}>✗</span> <strong>{e.feed}</strong>: {e.error}
+                <span style={{ float: "right", opacity: 0.6 }}>{e.at?.slice(11,19)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

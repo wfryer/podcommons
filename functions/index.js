@@ -1,30 +1,22 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
 initializeApp();
 const db = getFirestore();
 
-const ADMIN_TOKEN = defineSecret("ADMIN_TOKEN");
-const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+// Use process.env for secrets in v2 (auto-populated from Firebase secrets)
+const getAdminToken = () => process.env.ADMIN_TOKEN;
+const getGeminiKey = () => process.env.GEMINI_API_KEY;
 
-// Wes's taste profile summary for AI scoring
 const WES_TASTE_PROFILE = `
 Wes Fryer is a middle school STEM and media literacy teacher in Charlotte, NC.
-His strongest interests based on listening history:
-- AI & educational technology (EdTech Situation Room, Hard Fork)
-- Media literacy, misinformation, journalism
-- Democracy, civic engagement, resistance to authoritarianism
-- Faith & spirituality (progressive Christian perspective)
-- Local Charlotte/NC news and community
-- History (American and world)
-- Education policy and teaching practices
-- Science and technology policy
-- Podcasting and open web advocacy
-- Health and wellness
-He is less interested in: sports, entertainment/celebrity, true crime, finance/investing, cooking.
+Strongest interests: AI & educational technology, media literacy, misinformation,
+democracy & civic engagement, progressive Christian faith, local Charlotte/NC news,
+American history, education policy, science & technology policy, podcasting & open web.
+Less interested in: sports, entertainment/celebrity, true crime, finance/investing, cooking.
 `;
 
 const TOPICS = [
@@ -37,30 +29,23 @@ const TOPICS = [
   "Sports", "Entertainment & Celebrity"
 ];
 
-// Analyze episode with Gemini Flash
 async function analyzeEpisode(title, description, apiKey) {
-  const prompt = `You are a podcast episode classifier. Given a podcast episode title and description, return ONLY a JSON object with no markdown, no explanation.
+  const prompt = `Classify this podcast episode. Return ONLY a JSON object, no markdown.
 
-Episode title: "${title}"
-Episode description: "${description?.slice(0, 500) || ""}"
+Title: "${title}"
+Description: "${(description || "").slice(0, 400)}"
 
 Available topics: ${TOPICS.join(", ")}
 
-Taste profile of the target listener:
-${WES_TASTE_PROFILE}
+Listener profile: ${WES_TASTE_PROFILE}
 
-Return this exact JSON structure:
-{
-  "topics": ["topic1", "topic2"],
-  "tasteScore": 0.0,
-  "tasteReason": "one sentence why"
-}
+Return exactly:
+{"topics":["topic1","topic2"],"tasteScore":0.0,"tasteReason":"one sentence"}
 
 Rules:
-- topics: 1-3 most relevant topics from the available list only
-- tasteScore: 0.0 to 1.0 how much this listener would enjoy this episode (0=not at all, 1=perfect match)
-- tasteReason: one short sentence explaining the score
-- Return ONLY the JSON, no markdown backticks`;
+- topics: 1-3 from the available list only
+- tasteScore: 0.0-1.0 (0=no interest, 1=perfect match)
+- Return ONLY the JSON object`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -69,23 +54,25 @@ Rules:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 200 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: 150 },
       }),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(12000),
     }
   );
 
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 100)}`);
+  }
+
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-  // Clean and parse JSON
   const clean = text.replace(/```json|```/g, "").trim();
   const parsed = JSON.parse(clean);
 
   return {
-    topics: parsed.topics || [],
-    tasteScore: Math.min(1, Math.max(0, parsed.tasteScore || 0.5)),
+    topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+    tasteScore: Math.min(1, Math.max(0, Number(parsed.tasteScore) || 0.5)),
     tasteReason: parsed.tasteReason || "",
   };
 }
@@ -140,13 +127,14 @@ function getChannelArtwork(xml) {
 async function pollFeeds(limitCount = 0, geminiKey = null) {
   const startTime = Date.now();
   let processed = 0, added = 0, errors = 0, analyzed = 0;
+  const errorLog = [];
 
   let podQuery = db.collection("podcasts").where("visibility", "==", "visible");
   if (limitCount > 0) podQuery = podQuery.limit(limitCount);
   const podSnap = await podQuery.get();
   const podcasts = podSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  console.log(`Polling ${podcasts.length} feeds...`);
+  console.log(`Polling ${podcasts.length} feeds, Gemini: ${geminiKey ? "enabled" : "disabled"}`);
 
   const blockedSnap = await db.collection("blockedFeeds").get();
   const blockedUrls = new Set(blockedSnap.docs.map(d => d.data().feedUrl));
@@ -158,7 +146,11 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
         headers: { "User-Agent": "PodCommons/1.0 RSS Reader" },
         signal: AbortSignal.timeout(8000),
       });
-      if (!res.ok) { errors++; continue; }
+      if (!res.ok) {
+        errors++;
+        errorLog.push({ feed: podcast.title, error: `HTTP ${res.status}`, at: new Date().toISOString() });
+        continue;
+      }
       const xml = await res.text();
       const artworkUrl = podcast.artworkUrl || getChannelArtwork(xml);
 
@@ -173,7 +165,6 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
           .where("episodeUrl", "==", item.episodeUrl).limit(1).get();
         if (!existing.empty) continue;
 
-        // AI analysis with Gemini Flash
         let topics = [];
         let tasteScore = podcast.isFirstParty ? 0.85 : 0.5;
         let tasteReason = "";
@@ -187,11 +178,10 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
               : analysis.tasteScore;
             tasteReason = analysis.tasteReason;
             analyzed++;
-            // Small delay to respect Gemini rate limits
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 300));
           } catch (aiErr) {
-            console.error(`Gemini error for "${item.title}":`, aiErr.message);
-            // Fall back to defaults
+            console.error(`Gemini error: ${aiErr.message}`);
+            errorLog.push({ feed: podcast.title, error: `Gemini: ${aiErr.message}`, at: new Date().toISOString() });
           }
         }
 
@@ -221,13 +211,15 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
       }
       processed++;
     } catch (err) {
-      console.error(`Error polling ${podcast.feedUrl}:`, err.message);
+      console.error(`Error polling ${podcast.feedUrl}: ${err.message}`);
       errors++;
+      errorLog.push({ feed: podcast.title, error: err.message, at: new Date().toISOString() });
     }
     await new Promise(r => setTimeout(r, 100));
   }
 
   const duration = Math.round((Date.now() - startTime) / 1000);
+
   await db.collection("siteSettings").doc("pollStatus").set({
     lastPollAt: FieldValue.serverTimestamp(),
     lastPollDuration: duration,
@@ -236,10 +228,11 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
     lastPollErrors: errors,
     lastPollAnalyzed: analyzed,
     nextPollAt: new Date(Date.now() + 4 * 60 * 60 * 1000),
+    lastErrorLog: errorLog.slice(0, 50),
   });
 
-  console.log(`Poll complete: ${processed} feeds, ${added} new episodes, ${analyzed} AI-analyzed, ${errors} errors, ${duration}s`);
-  return { processed, added, errors, analyzed, duration };
+  console.log(`Poll complete: ${processed} feeds, ${added} new, ${analyzed} AI-analyzed, ${errors} errors, ${duration}s`);
+  return { processed, added, errors, analyzed, duration, errorLog };
 }
 
 // Scheduled every 4 hours
@@ -247,23 +240,22 @@ exports.scheduledRSSPoll = onSchedule({
   schedule: "every 4 hours",
   timeoutSeconds: 540,
   memory: "512MiB",
-  secrets: [ADMIN_TOKEN, GEMINI_API_KEY],
+  secrets: ["ADMIN_TOKEN", "GEMINI_API_KEY"],
 }, async () => {
-  await pollFeeds(0, GEMINI_API_KEY.value());
+  const key = process.env.GEMINI_API_KEY;
+  console.log(`Gemini key: ${key ? key.slice(0,8) + "..." : "NOT FOUND"}`);
+  await pollFeeds(0, key);
 });
 
 // Manual trigger
 exports.manualRSSPoll = onRequest({
   timeoutSeconds: 540,
   memory: "512MiB",
-  secrets: [ADMIN_TOKEN, GEMINI_API_KEY],
+  secrets: ["ADMIN_TOKEN", "GEMINI_API_KEY"],
   cors: true,
 }, async (req, res) => {
   const token = req.query.token || req.headers["x-admin-token"];
-  const secret = ADMIN_TOKEN.value();
-
-  console.log(`Token received: ${token ? token.slice(0,4) + "..." : "none"}`);
-  console.log(`Secret loaded: ${secret ? secret.slice(0,4) + "..." : "NOT LOADED"}`);
+  const secret = process.env.ADMIN_TOKEN;
 
   if (!token || token !== secret) {
     res.status(403).json({ error: "Unauthorized" });
@@ -272,9 +264,10 @@ exports.manualRSSPoll = onRequest({
 
   try {
     const limit = parseInt(req.query.limit) || 0;
-    const useAI = req.query.ai !== "false"; // default true
-    const geminiKey = useAI ? GEMINI_API_KEY.value() : null;
-    const result = await pollFeeds(limit, geminiKey);
+    const useAI = req.query.ai !== "false";
+    const key = useAI ? process.env.GEMINI_API_KEY : null;
+    console.log(`Manual poll: Gemini=${key ? key.slice(0,8) + "..." : "disabled"}`);
+    const result = await pollFeeds(limit, key);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("Manual poll error:", err);
