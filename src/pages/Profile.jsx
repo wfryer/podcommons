@@ -108,11 +108,15 @@ function ListeningQueue({ userId, isOwnProfile }) {
         collection(db, "interactions"),
         where("userId", "==", userId),
         where("type", "==", "queue"),
-        orderBy("createdAt", "desc"),
         limit(50)
       );
       const snap = await getDocs(q);
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return dateB - dateA;
+        });
 
       // Fetch episode details
       const withEpisodes = await Promise.all(items.map(async item => {
@@ -172,12 +176,18 @@ function ActivityFeed({ userId, isOwnProfile }) {
       const q = query(
         collection(db, "interactions"),
         where("userId", "==", userId),
-        where("status", "==", "approved"),
-        orderBy("createdAt", "desc"),
-        limit(30)
+        limit(50)
       );
       const snap = await getDocs(q);
-      setActivity(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(i => i.type !== "queue")
+        .sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return dateB - dateA;
+        })
+        .slice(0, 30);
+      setActivity(items);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -230,7 +240,6 @@ function Favorites({ userId }) {
         collection(db, "interactions"),
         where("userId", "==", userId),
         where("type", "==", "favorite"),
-        orderBy("createdAt", "desc"),
         limit(50)
       );
       const snap = await getDocs(q);

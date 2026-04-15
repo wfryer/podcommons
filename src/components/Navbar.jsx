@@ -49,11 +49,7 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          <Link to="/suggest"
-            style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
-            className="hover:text-white transition-colors hidden sm:block">
-            Suggest a Podcast
-          </Link>
+
           <Link to="/about"
             style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
             className="hover:text-white transition-colors hidden sm:block">

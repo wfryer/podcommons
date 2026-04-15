@@ -51,6 +51,7 @@ export default function EpisodeCard({ episode }) {
   const [showWhy, setShowWhy] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [queued, setQueued] = useState(false);
   const audioRef = useRef(null);
   const chip = getWhyChip(episode);
   const duration = formatDuration(episode.duration);
@@ -76,14 +77,17 @@ export default function EpisodeCard({ episode }) {
 
   const checkExistingInteractions = async () => {
     try {
-      const [likesSnap, favsSnap] = await Promise.all([
+      const [likesSnap, favsSnap, queueSnap] = await Promise.all([
         getDocs(query(collection(db, "interactions"),
           where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "like"))),
         getDocs(query(collection(db, "interactions"),
-          where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "favorite")))
+          where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "favorite"))),
+        getDocs(query(collection(db, "interactions"),
+          where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "queue")))
       ]);
       setLiked(!likesSnap.empty);
       setFavorited(!favsSnap.empty);
+      setQueued(!queueSnap.empty);
     } catch (err) {}
   };
 
@@ -160,11 +164,13 @@ export default function EpisodeCard({ episode }) {
       where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "queue")));
     if (!snap.empty) {
       await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+      setQueued(false);
     } else {
       await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: episode.id, type: "queue",
         status: "approved", createdAt: new Date(),
       });
+      setQueued(true);
     }
   };
 
@@ -303,8 +309,12 @@ export default function EpisodeCard({ episode }) {
 
               {user && (
                 <button onClick={handleQueue}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.75rem", color: "var(--color-text-muted)", padding: 0 }}
-                  title="Add to listening queue">🎧</button>
+                  style={{ background: "none", border: "none", cursor: "pointer",
+                    fontSize: "0.75rem", padding: 0,
+                    color: queued ? "var(--color-accent)" : "var(--color-text-muted)" }}
+                  title={queued ? "Remove from queue" : "Add to listening queue"}>
+                  🎧{queued ? " ✓" : ""}
+                </button>
               )}
               {user && (
                 <button onClick={handleFlag}
