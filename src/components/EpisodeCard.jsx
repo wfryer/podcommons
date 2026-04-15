@@ -4,6 +4,7 @@ import { doc, updateDoc, increment, collection, addDoc, query, where, getDocs, d
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "./WhyThisModal";
+import { decodeEntities, stripHtml } from "../utils/textUtils";
 import ShareSheet from "./ShareSheet";
 
 function formatDuration(seconds) {
@@ -212,7 +213,7 @@ export default function EpisodeCard({ episode }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.15rem" }}>
               <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--color-accent)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                {episode.podcastTitle || "Podcast"}
+                {decodeEntities(episode.podcastTitle) || "Podcast"}
               </p>
               <button onClick={e => { e.preventDefault(); setShowWhy(true); }}
                 className="why-chip" style={{ flexShrink: 0, fontSize: "0.68rem" }}>
@@ -221,7 +222,7 @@ export default function EpisodeCard({ episode }) {
             </div>
 
             <p style={{ fontWeight: 600, fontSize: "0.92rem", lineHeight: 1.35, color: "var(--color-text)", marginBottom: "0.25rem" }}>
-              {episode.title}
+              {decodeEntities(episode.title)}
             </p>
 
             <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.4rem" }}>
@@ -234,7 +235,7 @@ export default function EpisodeCard({ episode }) {
                 marginBottom: "0.5rem", display: "-webkit-box", WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical", overflow: "hidden"
               }}>
-                {episode.description.replace(/<[^>]*>/g, "")}
+                {stripHtml(episode.description)}
               </p>
             )}
 

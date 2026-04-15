@@ -16,9 +16,7 @@ export default function AudioPlayer({ audioUrl, episodeUrl, title }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    return () => {
-      if (audioRef.current) audioRef.current.pause();
-    };
+    return () => { if (audioRef.current) audioRef.current.pause(); };
   }, []);
 
   const togglePlay = () => {
@@ -34,17 +32,20 @@ export default function AudioPlayer({ audioUrl, episodeUrl, title }) {
     }
   };
 
-  const handleTimeUpdate = () => {
-    setCurrentTime(audioRef.current?.currentTime || 0);
+  const skip = (seconds) => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = Math.min(
+      Math.max(0, audioRef.current.currentTime + seconds),
+      duration
+    );
+    setCurrentTime(audioRef.current.currentTime);
   };
 
-  const handleLoadedMetadata = () => {
-    setDuration(audioRef.current?.duration || 0);
-  };
+  const handleTimeUpdate = () => setCurrentTime(audioRef.current?.currentTime || 0);
+  const handleLoadedMetadata = () => setDuration(audioRef.current?.duration || 0);
 
   const handleSeek = (e) => {
-    const pct = e.target.value / 100;
-    const time = pct * duration;
+    const time = (e.target.value / 100) * duration;
     if (audioRef.current) audioRef.current.currentTime = time;
     setCurrentTime(time);
   };
@@ -61,6 +62,14 @@ export default function AudioPlayer({ audioUrl, episodeUrl, title }) {
     );
   }
 
+  const btnStyle = {
+    background: "none", border: "none", cursor: "pointer",
+    color: "var(--color-text-muted)", fontSize: "0.8rem",
+    display: "flex", flexDirection: "column", alignItems: "center",
+    gap: "0.1rem", padding: "0.25rem 0.5rem", borderRadius: "6px",
+    transition: "color 0.15s",
+  };
+
   return (
     <div style={{
       background: "var(--color-surface)", border: "1px solid var(--color-border)",
@@ -76,7 +85,17 @@ export default function AudioPlayer({ audioUrl, episodeUrl, title }) {
         preload="metadata"
       />
 
-      <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+
+        {/* Rewind 30s */}
+        <button onClick={() => skip(-30)} style={btnStyle}
+          title="Back 30 seconds"
+          onMouseEnter={e => e.currentTarget.style.color = "var(--color-accent)"}
+          onMouseLeave={e => e.currentTarget.style.color = "var(--color-text-muted)"}>
+          <span style={{ fontSize: "1.1rem" }}>⟨⟨</span>
+          <span style={{ fontSize: "0.62rem" }}>30s</span>
+        </button>
+
         {/* Big play button */}
         <button onClick={togglePlay} disabled={loading}
           style={{
@@ -91,6 +110,15 @@ export default function AudioPlayer({ audioUrl, episodeUrl, title }) {
           onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
         >
           {loading ? "⟳" : playing ? "⏸" : "▶"}
+        </button>
+
+        {/* Forward 30s */}
+        <button onClick={() => skip(30)} style={btnStyle}
+          title="Forward 30 seconds"
+          onMouseEnter={e => e.currentTarget.style.color = "var(--color-accent)"}
+          onMouseLeave={e => e.currentTarget.style.color = "var(--color-text-muted)"}>
+          <span style={{ fontSize: "1.1rem" }}>⟩⟩</span>
+          <span style={{ fontSize: "0.62rem" }}>30s</span>
         </button>
 
         {/* Progress */}

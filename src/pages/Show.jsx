@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { decodeEntities } from "../utils/textUtils";
 import { useParams, Link } from "react-router-dom";
 import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { db } from "../firebase";
@@ -110,7 +111,7 @@ export default function Show() {
       {/* Show header */}
       <div style={{ display: "flex", gap: "1.5rem", marginBottom: "2rem", alignItems: "flex-start" }}>
         {showMeta.artwork ? (
-          <img src={showMeta.artwork} alt={showMeta.title}
+          <img src={showMeta.artwork} alt={decodeEntities(showMeta.title)}
             style={{ width: 120, height: 120, borderRadius: "12px", objectFit: "cover",
               flexShrink: 0, border: "2px solid var(--color-border)" }} />
         ) : (
@@ -124,7 +125,7 @@ export default function Show() {
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
             <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem", lineHeight: 1.2 }}>
-              {showMeta.title}
+              {decodeEntities(showMeta.title)}
             </h1>
             <span style={{
               fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "4px",

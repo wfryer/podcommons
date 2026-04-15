@@ -4,6 +4,7 @@ import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, ge
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "../components/WhyThisModal";
+import { decodeEntities, stripHtml } from "../utils/textUtils";
 import AudioPlayer from "../components/AudioPlayer";
 import ShareSheet from "../components/ShareSheet";
 
@@ -21,19 +22,7 @@ function formatDate(ts) {
   return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
-function stripHtml(html) {
-  if (!html) return "";
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// stripHtml imported from textUtils
 
 export default function Episode() {
   const { id } = useParams();
@@ -175,7 +164,7 @@ export default function Episode() {
       {/* Episode header */}
       <div style={{ display: "flex", gap: "1.25rem", marginBottom: "1.5rem" }}>
         {episode.imageUrl ? (
-          <img src={episode.imageUrl} alt={episode.title}
+          <img src={episode.imageUrl} alt={decodeEntities(episode.title)}
             style={{ width: 100, height: 100, borderRadius: "12px", objectFit: "cover", flexShrink: 0 }} />
         ) : (
           <div style={{
@@ -186,10 +175,10 @@ export default function Episode() {
         )}
         <div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.4rem", lineHeight: 1.3, marginBottom: "0.4rem" }}>
-            {episode.title}
+            {decodeEntities(episode.title)}
           </h1>
           <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-            {episode.podcastTitle}
+            {decodeEntities(episode.podcastTitle)}
             {episode.duration ? ` · ${formatDuration(episode.duration)}` : ""}
             {episode.publishedAt ? ` · ${formatDate(episode.publishedAt)}` : ""}
           </p>
@@ -209,7 +198,7 @@ export default function Episode() {
         <AudioPlayer
           audioUrl={episode.audioUrl}
           episodeUrl={episode.episodeUrl}
-          title={episode.title}
+          title={decodeEntities(episode.title)}
         />
       )}
 
