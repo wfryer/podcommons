@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { rankEpisodes } from "../utils/algorithmScorer";
 import EpisodeCard from "../components/EpisodeCard";
 import WesShowsShelf from "../components/WesShowsShelf";
+import TopicFilter from "../components/TopicFilter";
 import SliderPanel from "../components/SliderPanel";
 
 const TABS = [
@@ -28,13 +29,14 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [shelfVisible, setShelfVisible] = useState(true);
   const [showSliders, setShowSliders] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState(null);
   const [sliders, setSliders] = useState({
     discoveryVsFamiliar: 70,
     recentVsTimeless: 60,
     myTasteVsCommunity: 50,
   });
 
-  useEffect(() => { fetchEpisodes(); }, [activeTab]);
+  useEffect(() => { fetchEpisodes(); }, [activeTab, selectedTopic]);
   useEffect(() => {
     if (activeTab === "discover" && episodes.length > 0) fetchEpisodes();
   }, [sliders]);
@@ -71,7 +73,11 @@ export default function Home() {
         eps = eps.slice(0, 30);
       }
 
-      setEpisodes(eps);
+      // Apply topic filter client-side
+      const filtered = selectedTopic
+        ? eps.filter(e => e.topics?.includes(selectedTopic))
+        : eps;
+      setEpisodes(filtered);
     } catch (err) {
       console.error("Feed fetch error:", err);
       try {
@@ -130,6 +136,8 @@ export default function Home() {
       </div>
 
       {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} activeTab={activeTab} onApply={fetchEpisodes} onClose={() => setShowSliders(false)} />}
+
+      <TopicFilter selected={selectedTopic} onSelect={setSelectedTopic} />
 
       {/* Tab description */}
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>

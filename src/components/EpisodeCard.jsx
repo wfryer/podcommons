@@ -152,6 +152,22 @@ export default function EpisodeCard({ episode }) {
     }
   };
 
+  const handleQueue = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    // Check if already queued
+    const snap = await getDocs(query(collection(db, "interactions"),
+      where("userId", "==", user.uid), where("episodeId", "==", episode.id), where("type", "==", "queue")));
+    if (!snap.empty) {
+      await deleteDoc(doc(db, "interactions", snap.docs[0].id));
+    } else {
+      await addDoc(collection(db, "interactions"), {
+        userId: user.uid, episodeId: episode.id, type: "queue",
+        status: "approved", createdAt: new Date(),
+      });
+    }
+  };
+
   const handleFlag = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -285,6 +301,11 @@ export default function EpisodeCard({ episode }) {
                 Share ↗
               </button>
 
+              {user && (
+                <button onClick={handleQueue}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.75rem", color: "var(--color-text-muted)", padding: 0 }}
+                  title="Add to listening queue">🎧</button>
+              )}
               {user && (
                 <button onClick={handleFlag}
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.75rem", color: "var(--color-text-muted)", padding: 0 }}

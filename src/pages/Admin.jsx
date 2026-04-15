@@ -495,6 +495,70 @@ function FeedManagement() {
   );
 }
 
+// ─── Suggestions Queue ────────────────────────────────────────────────────────
+function SuggestionsQueue() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchSuggestions(); }, []);
+
+  const fetchSuggestions = async () => {
+    setLoading(true);
+    try {
+      const snap = await getDocs(query(
+        collection(db, "podcastSuggestions"),
+        where("status", "==", "pending"),
+        orderBy("createdAt", "desc"),
+        limit(50)
+      ));
+      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error(err); }
+    setLoading(false);
+  };
+
+  const setStatus = async (id, status) => {
+    await updateDoc(doc(db, "podcastSuggestions", id), { status });
+    setItems(prev => prev.filter(i => i.id !== id));
+  };
+
+  if (loading) return <p style={{ color: "var(--color-text-muted)" }}>Loading...</p>;
+  if (items.length === 0) return (
+    <div style={{ textAlign: "center", padding: "3rem", color: "var(--color-text-muted)",
+      border: "1px dashed var(--color-border)", borderRadius: "12px" }}>
+      <p style={{ fontSize: "1.5rem" }}>✅</p>
+      <p>No pending suggestions!</p>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {items.map(item => (
+        <div key={item.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
+          borderRadius: "12px", padding: "1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+            <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+              {item.type === "podcast" ? "🎙️" : "📻"} {item.title}
+            </p>
+            <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+              by @{item.suggestedByUsername}
+            </span>
+          </div>
+          {item.url && <p style={{ fontSize: "0.8rem", color: "var(--color-accent)", marginBottom: "0.4rem" }}>{item.url}</p>}
+          {item.reason && <p style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>"{item.reason}"</p>}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={() => setStatus(item.id, "approved")} className="btn-primary"
+              style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>Approve</button>
+            <button onClick={() => setStatus(item.id, "rejected")}
+              style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem", borderRadius: "8px",
+                background: "rgba(248,113,113,0.1)", border: "1px solid #f87171",
+                color: "#f87171", cursor: "pointer" }}>Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 export default function Admin() {
   const { user, profile, loading } = useAuth();
@@ -533,6 +597,7 @@ export default function Admin() {
     { id: "flags", label: `🚩 Flags${flagCount > 0 ? ` (${flagCount})` : ""}` },
     { id: "feeds", label: "📡 Feeds" },
     { id: "users", label: "👥 Users" },
+    { id: "suggestions", label: "💡 Suggestions" },
   ];
 
   return (
