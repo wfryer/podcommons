@@ -6,27 +6,26 @@ import { auth, provider, db } from "../firebase";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState(undefined); // undefined = not yet resolved
+  const [profile, setProfile] = useState(undefined); // undefined = not yet resolved
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
       if (firebaseUser) {
+        setUser(firebaseUser);
         try {
           const profileDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          // Only set profile to null if document genuinely doesn't exist
-          // undefined means still loading, null means confirmed no profile
           setProfile(profileDoc.exists() ? profileDoc.data() : null);
+          // null = confirmed no profile exists
         } catch (err) {
           console.error("Profile fetch error:", err);
           setProfile(null);
         }
       } else {
+        setUser(null);
         setProfile(null);
       }
-      // Loading is only done after BOTH user and profile are resolved
       setLoading(false);
     });
     return unsubscribe;
@@ -42,8 +41,8 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await signOut(auth);
-    setProfile(null);
     setUser(null);
+    setProfile(null);
   };
 
   const refreshProfile = async () => {

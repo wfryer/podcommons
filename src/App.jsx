@@ -12,14 +12,15 @@ import Settings from "./pages/Settings";
 import About from "./pages/About";
 import Navbar from "./components/Navbar";
 
-// Only redirect to complete-profile if loading is done AND user has no profile
+// Guard: only redirect when we're 100% sure user has no profile
+// undefined = still loading, null = confirmed no profile
 function RequireProfile({ children }) {
   const { user, profile, loading } = useAuth();
-  // Still loading — show nothing, don't redirect yet
-  if (loading) return null;
-  // Loading done, user logged in, no profile found → send to complete profile
-  if (!loading && user && !profile) return <Navigate to="/complete-profile" replace />;
-  // Everything else — show the page
+  // Still resolving auth or profile — wait
+  if (loading || user === undefined || profile === undefined) return null;
+  // Confirmed: logged in AND no profile exists
+  if (user && profile === null) return <Navigate to="/complete-profile" replace />;
+  // All other cases: show the page
   return children;
 }
 
