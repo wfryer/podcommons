@@ -12,12 +12,14 @@ import Settings from "./pages/Settings";
 import About from "./pages/About";
 import Navbar from "./components/Navbar";
 
-// Only redirect to complete-profile from the home page
-// Public pages (about, suggest, episode, show) are always accessible
+// Only redirect to complete-profile if loading is done AND user has no profile
 function RequireProfile({ children }) {
   const { user, profile, loading } = useAuth();
+  // Still loading — show nothing, don't redirect yet
   if (loading) return null;
-  if (user && !profile) return <Navigate to="/complete-profile" replace />;
+  // Loading done, user logged in, no profile found → send to complete profile
+  if (!loading && user && !profile) return <Navigate to="/complete-profile" replace />;
+  // Everything else — show the page
   return children;
 }
 
