@@ -1,15 +1,19 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest } = require("firebase-functions/v2/https");
-const { setGlobalOptions } = require("firebase-functions/v2");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
-initializeApp();
-const db = getFirestore();
+// Lazy initialization - don't init at module load time
+let _db = null;
+let _FieldValue = null;
 
-// Use process.env for secrets in v2 (auto-populated from Firebase secrets)
-const getAdminToken = () => process.env.ADMIN_TOKEN;
-const getGeminiKey = () => process.env.GEMINI_API_KEY;
+function getDb() {
+  if (!_db) {
+    const admin = require("firebase-admin");
+    if (!admin.apps.length) admin.initializeApp();
+    _db = admin.firestore();
+    _FieldValue = admin.firestore.FieldValue;
+  }
+  return { db: _db, FieldValue: _FieldValue };
+}
 
 const WES_TASTE_PROFILE = `
 Wes Fryer is a middle school STEM and media literacy teacher in Charlotte, NC.
@@ -48,7 +52,7 @@ Rules:
 - Return ONLY the JSON object`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -62,7 +66,7 @@ Rules:
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 100)}`);
+    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 200)}`);
   }
 
   const data = await res.json();
@@ -125,6 +129,7 @@ function getChannelArtwork(xml) {
 }
 
 async function pollFeeds(limitCount = 0, geminiKey = null) {
+  const { db, FieldValue } = getDb();
   const startTime = Date.now();
   let processed = 0, added = 0, errors = 0, analyzed = 0;
   const errorLog = [];
@@ -219,7 +224,6 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
   }
 
   const duration = Math.round((Date.now() - startTime) / 1000);
-
   await db.collection("siteSettings").doc("pollStatus").set({
     lastPollAt: FieldValue.serverTimestamp(),
     lastPollDuration: duration,
@@ -243,7 +247,7 @@ exports.scheduledRSSPoll = onSchedule({
   secrets: ["ADMIN_TOKEN", "GEMINI_API_KEY"],
 }, async () => {
   const key = process.env.GEMINI_API_KEY;
-  console.log(`Gemini key: ${key ? key.slice(0,8) + "..." : "NOT FOUND"}`);
+  console.log(`Gemini key: ${key ? key.slice(0, 8) + "..." : "NOT FOUND"}`);
   await pollFeeds(0, key);
 });
 
@@ -266,7 +270,7 @@ exports.manualRSSPoll = onRequest({
     const limit = parseInt(req.query.limit) || 0;
     const useAI = req.query.ai !== "false";
     const key = useAI ? process.env.GEMINI_API_KEY : null;
-    console.log(`Manual poll: Gemini=${key ? key.slice(0,8) + "..." : "disabled"}`);
+    console.log(`Manual poll: Gemini=${key ? key.slice(0, 8) + "..." : "disabled"}`);
     const result = await pollFeeds(limit, key);
     res.json({ success: true, ...result });
   } catch (err) {

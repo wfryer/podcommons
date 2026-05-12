@@ -35,12 +35,12 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <div>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
             <span style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)", fontSize: "1.4rem", fontWeight: 900 }}>
               🎙️ {siteTitle}
             </span>
             {siteByline && (
-              <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginLeft: "0.5rem" }}>
+              <span style={{ fontSize: "0.68rem", color: "var(--color-text-muted)" }}>
                 by {siteByline}
               </span>
             )}
