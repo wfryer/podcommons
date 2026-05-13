@@ -15,7 +15,7 @@ PodCommons is an open-source platform for discovering, curating, and sharing pod
 
 Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 
-- **🤖 AI-powered episode analysis** — Every new episode is analyzed by Google Gemini Flash at import time, assigning topic tags and a 0–1 relevance score against the curator's taste profile
+- **🤖 AI-powered episode analysis** — Every new episode is analyzed by Google Gemini 2.0 Flash at import time, assigning topic tags and a 0–1 relevance score against the curator's taste profile
 - **🧠 "Why this?" transparency layer** — Every recommended episode shows exactly which signals surfaced it, with a visual breakdown of contributing factors
 - **⚙️ Algorithm tuning sliders** — Adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time. Settings saved to your profile
 - **🏷️ Topic filtering** — Filter the feed by topic: AI & Technology, Democracy & Civic, Education, Faith, History, and 16 more categories
@@ -29,7 +29,7 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 - Import podcast subscriptions via OPML (420+ feeds supported)
 - Automatic RSS polling every 4 hours via Firebase Cloud Functions
 - Manual refresh with real-time status in admin dashboard
-- AI episode analysis: topic classification + taste scoring via Gemini Flash
+- AI episode analysis: topic classification + taste scoring via Gemini 2.0 Flash
 - Four feed tabs: 🧠 Discover / 🕐 Latest / ⭐ Admin Picks / 🔥 Community
 - Algorithm tuning sliders with persistent settings
 - "Why this?" transparency chip on every episode card
@@ -39,7 +39,9 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 - ▶ Play button overlay on episode artwork
 - Embedded audio player on episode detail pages
 - ⟨⟨ 30s / ⟩⟩ 30s skip buttons
-- Scrubber with time display
+- Scrubber with current time and remaining time display
+- **Resume playback** — saves position every 10 seconds, offers to resume on return
+- Large artwork banner with gradient overlay
 - Graceful fallback to external link if audio fails
 
 ### Community & Profiles
@@ -88,7 +90,7 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 | Authentication | Firebase Auth (Google OAuth) |
 | Database | Firestore |
 | Background jobs | Firebase Cloud Functions v2 (Node.js 24) |
-| AI analysis | Google Gemini Flash API |
+| AI analysis | Google Gemini 2.0 Flash API |
 | Hosting | Firebase Hosting |
 | Mobile (planned) | Capacitor (iOS + Android) |
 
@@ -97,10 +99,10 @@ Most podcast apps hide their recommendation logic. PodCommons does the opposite:
 ## 🏁 Quick Start — Run Your Own PodCommons
 
 ### Prerequisites
-- Node.js v18+
+- Node.js v22 (required — use nvm to install)
 - A free [Firebase](https://firebase.google.com) account (Blaze plan required for Cloud Functions)
 - A Google account
-- A [Google AI Studio](https://aistudio.google.com) API key for Gemini Flash
+- A [Google AI Studio](https://aistudio.google.com) API key for Gemini 2.0 Flash
 
 ### 1. Fork and clone
 ```bash
@@ -154,7 +156,15 @@ node importOPML.mjs path/to/subscriptions.opml
 ### 9. Deploy everything
 ```bash
 npm run build
-firebase deploy
+firebase deploy --only hosting
+```
+
+**Important — deploying Cloud Functions:**
+The Firebase CLI requires a minimal stub pattern for first-time function deployment.
+See `functions/index.stub.js` for the stub, deploy it first, then update via Cloud Console
+or redeploy with the full `index.js` after the stub succeeds:
+```bash
+firebase deploy --only functions
 ```
 
 ---
@@ -182,6 +192,8 @@ podcommons/
 
 ### High Priority
 - Fix login redirect race condition (profile check on sign-in)
+- Enable Gemini billing for AI analysis (prepaid credits depleted)
+- Bulk AI tagging of existing 3,500+ episodes without topics
 - PodCommons RSS output feeds (`/feed.xml`, `/feed/admin-picks.xml`, `/feed/community.xml`)
 - Larger listening queue button (mobile UX)
 - Mobile UX audit and improvements
