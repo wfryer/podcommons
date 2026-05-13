@@ -275,7 +275,7 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
                 fontSize: "0.78rem", color: "var(--color-text-muted)",
                 textDecoration: "none",
               }}>
-              Open in podcast app ↗
+              Open Original Podcast Link ↗
             </a>
           </div>
         )}
