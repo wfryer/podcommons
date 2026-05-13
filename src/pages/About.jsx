@@ -79,20 +79,34 @@ export default function About() {
           What is PodCommons?
         </h2>
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
-          PodCommons is a community podcast discovery engine built around a radical idea:
-          you should be able to <strong style={{ color: "var(--color-text)" }}>see and adjust the algorithm</strong> that
-          shapes your feed. Most podcast apps hide their recommendation logic. PodCommons does the opposite.
+          PodCommons is a community podcast discovery engine with three interlocking purposes:
         </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem", marginBottom: "1.25rem" }}>
+          {[
+            { icon: "🎧", title: "Personal discovery", desc: "Help Wes (and eventually every member) better discover podcasts of genuine interest — with direct, transparent control over the algorithm rather than surrendering to a black box." },
+            { icon: "📡", title: "Curated sharing", desc: "Share the podcasts Wes listens to and enjoys, serving as a trusted human filter for others. Building on the Discovering Good Ideas project (wfryer.me/ideas) and Reclaiming Our News Feeds (wiki.wesfryer.com) — but for podcast feeds!" },
+            { icon: "🌐", title: "Open web advocacy", desc: "Model what it looks like to reclaim your media diet from algorithmic platforms. PodCommons is built on RSS, OPML, Mastodon, Bluesky, and Pinboard — the open, federated, interoperable web." },
+          ].map(p => (
+            <div key={p.title} style={{ display: "flex", gap: "0.875rem",
+              background: "var(--color-bg)", borderRadius: "10px", padding: "0.875rem" }}>
+              <span style={{ fontSize: "1.4rem", flexShrink: 0 }}>{p.icon}</span>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.25rem" }}>{p.title}</p>
+                <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", lineHeight: 1.6 }}>{p.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
-          Every episode is analyzed by AI (Google Gemini Flash) at import time — assigned topic tags
+          Every episode is analyzed by AI (Google Gemini 2.0 Flash) at import time — assigned topic tags
           and a relevance score against the curator's taste profile. The Discover feed uses these signals
-          alongside your listening history, community engagement, and recency. Three sliders let you
+          alongside listening history, community engagement, and recency. Three sliders let you
           tune the algorithm in real time. Every recommended episode shows a <strong style={{ color: "var(--color-text)" }}>"Why this?"</strong> chip
           with a visual breakdown of exactly which signals surfaced it.
         </p>
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8 }}>
           This is both a functional podcast platform and a <strong style={{ color: "var(--color-text)" }}>living media literacy artifact</strong> —
-          designed to model what it looks like to have genuine agency over algorithmic systems.
+          designed to model what genuine agency over algorithmic systems looks like in practice.
         </p>
       </div>
 
@@ -205,8 +219,26 @@ export default function About() {
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
           PodCommons is built on and celebrates open standards — RSS, OPML, Mastodon, Bluesky, and Pinboard.
           It both consumes and produces RSS feeds, so your curation is never locked inside a platform.
-          This is a direct expression of the <strong style={{ color: "var(--color-text)" }}>#OwnYourFeed</strong> philosophy.
+          This is a direct expression of the <strong style={{ color: "var(--color-text)" }}>#OwnYourFeed</strong> philosophy
+          and Wes's broader advocacy for the <strong style={{ color: "var(--color-text)" }}>Fediverse</strong> and
+          open source / open standards social media platforms.
         </p>
+        <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
+          When major platforms change their algorithms, terms of service, or ownership, your podcast
+          subscriptions and listening history shouldn't be held hostage. RSS has always been the
+          answer — PodCommons makes that answer beautiful, social, and algorithmically transparent.
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          {[
+            { label: "🌱 Discovering Good Ideas", href: "https://wfryer.me/ideas" },
+            { label: "📰 Reclaiming Our News Feeds", href: "https://wiki.wesfryer.com/Home/thrive2026" },
+          ].map(l => (
+            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
+              className="btn-ghost" style={{ fontSize: "0.85rem", padding: "0.4rem 1rem", textDecoration: "none" }}>
+              {l.label}
+            </a>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           {["/feed.xml", "/feed/admin-picks.xml", "/feed/community.xml"].map(f => (
             <a key={f} href={f} style={{ fontSize: "0.8rem", color: "var(--color-accent)",
