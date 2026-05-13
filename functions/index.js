@@ -116,10 +116,15 @@ function parseRSSItems(xml, limit = 5) {
 
 function parseDuration(str) {
   if (!str) return 0;
-  const parts = str.split(":").map(Number);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parseInt(str) || 0;
+  try {
+    const clean = String(str).trim();
+    const parts = clean.split(":").map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    const val = parseInt(clean);
+    return isNaN(val) ? 0 : val;
+  } catch { return 0; }
 }
 
 function getChannelArtwork(xml) {
@@ -183,7 +188,7 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
               : analysis.tasteScore;
             tasteReason = analysis.tasteReason;
             analyzed++;
-            await new Promise(r => setTimeout(r, 300));
+            await new Promise(r => setTimeout(r, 5000)); // 5s delay = max 12/min, under free tier limit of 15/min
           } catch (aiErr) {
             console.error(`Gemini error: ${aiErr.message}`);
             errorLog.push({ feed: podcast.title, error: `Gemini: ${aiErr.message}`, at: new Date().toISOString() });
