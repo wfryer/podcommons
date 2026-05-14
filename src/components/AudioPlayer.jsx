@@ -12,7 +12,7 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2,"0")}`;
 }
 
-const RESUME_KEY = (episodeId) => `podcommons_pos_${episodeId}`;
+const RESUME_KEY = (episodeId) => episodeId ? `podcommons_pos_${episodeId}` : null;
 const SAVE_INTERVAL = 10; // save position every 10 seconds
 
 export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, imageUrl, podcastTitle }) {
@@ -27,13 +27,26 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
   const [resumed, setResumed] = useState(false);
   const [savedPosition, setSavedPosition] = useState(0);
 
+  // One-time cleanup of bad saved positions (from the undefined key bug)
+  useEffect(() => {
+    localStorage.removeItem('podcommons_pos_undefined');
+    localStorage.removeItem('podcommons_pos_null');
+  }, []);
+
   // Load saved position on mount
   useEffect(() => {
-    const saved = localStorage.getItem(RESUME_KEY(episodeId));
+    // Only load saved position if we have a valid episodeId
+    const key = RESUME_KEY(episodeId);
+    if (!key) return;
+    const saved = localStorage.getItem(key);
     if (saved) {
       const pos = parseFloat(saved);
-      if (pos > 10) { // only resume if more than 10 seconds in
+      // Only resume if more than 30 seconds in (increased from 10 to avoid false positives)
+      if (pos > 30 && !isNaN(pos)) {
         setSavedPosition(pos);
+      } else {
+        // Clear any invalid saved positions
+        localStorage.removeItem(key);
       }
     }
     return () => {
@@ -42,8 +55,10 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
   }, [episodeId]);
 
   const savePosition = () => {
-    if (audioRef.current && audioRef.current.currentTime > 10) {
-      localStorage.setItem(RESUME_KEY(episodeId), audioRef.current.currentTime.toString());
+    const key = RESUME_KEY(episodeId);
+    if (!key) return;
+    if (audioRef.current && audioRef.current.currentTime > 30) {
+      localStorage.setItem(key, audioRef.current.currentTime.toString());
     }
   };
 
@@ -85,7 +100,8 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
   const handleLoadedMetadata = () => setDuration(audioRef.current?.duration || 0);
   const handleEnded = () => {
     setPlaying(false);
-    localStorage.removeItem(RESUME_KEY(episodeId)); // clear saved position on completion
+    const key = RESUME_KEY(episodeId);
+    if (key) localStorage.removeItem(key); // clear saved position on completion
     if (saveTimerRef.current) clearInterval(saveTimerRef.current);
   };
 
@@ -174,7 +190,8 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
             <button onClick={() => {
               if (audioRef.current) audioRef.current.currentTime = 0;
               setSavedPosition(0);
-              localStorage.removeItem(RESUME_KEY(episodeId));
+              const key = RESUME_KEY(episodeId);
+              if (key) localStorage.removeItem(key);
             }} style={{
               background: "none", border: "none", cursor: "pointer",
               fontSize: "0.72rem", color: "var(--color-text-muted)"
