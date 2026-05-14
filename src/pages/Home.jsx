@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { rankEpisodes } from "../utils/algorithmScorer";
 import EpisodeCard from "../components/EpisodeCard";
 import WesShowsShelf from "../components/WesShowsShelf";
+import TopicFilter from "../components/TopicFilter";
 import SliderPanel from "../components/SliderPanel";
 
 const TABS = [
@@ -66,7 +67,8 @@ export default function Home() {
 
       } else {
         // Discover — real personalized ranking
-        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(100)));
+        const fetchLimit = selectedTopic ? 500 : 200;
+        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(fetchLimit)));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
         eps = await rankEpisodes(eps, sliders, user?.uid || "admin");
@@ -134,6 +136,8 @@ export default function Home() {
           ⚙️ Feed Settings {showSliders ? "▲" : "▼"}
         </button>
       </div>
+
+      <TopicFilter selected={selectedTopic} onSelect={(t) => { setSelectedTopic(t); }} />
 
       {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} activeTab={activeTab} onApply={fetchEpisodes} onClose={() => setShowSliders(false)} />}
 
