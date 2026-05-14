@@ -52,7 +52,7 @@ Rules:
 - Return ONLY the JSON object`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -71,8 +71,26 @@ Rules:
 
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  const clean = text.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(clean);
+  
+  // Robust JSON extraction - handle truncated/malformed responses
+  let parsed = {};
+  try {
+    const clean = text.replace(/```json|```/g, "").trim();
+    parsed = JSON.parse(clean);
+  } catch (e) {
+    // Try to extract fields manually with regex if JSON parse fails
+    const topicsMatch = text.match(/"topics"\s*:\s*\[([^\]]*)\]/);
+    const scoreMatch = text.match(/"tasteScore"\s*:\s*([\d.]+)/);
+    const reasonMatch = text.match(/"tasteReason"\s*:\s*"([^"]+)"/);
+    
+    if (topicsMatch) {
+      const topicStr = topicsMatch[1];
+      const topics = topicStr.match(/"([^"]+)"/g)?.map(t => t.replace(/"/g, "")) || [];
+      parsed.topics = topics;
+    }
+    if (scoreMatch) parsed.tasteScore = parseFloat(scoreMatch[1]);
+    if (reasonMatch) parsed.tasteReason = reasonMatch[1];
+  }
 
   return {
     topics: Array.isArray(parsed.topics) ? parsed.topics : [],
