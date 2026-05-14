@@ -11,7 +11,7 @@ function StatCard({ icon, value, label }) {
     }}>
       <div style={{ fontSize: "1.75rem", marginBottom: "0.25rem" }}>{icon}</div>
       <div style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem", color: "var(--color-accent)", fontWeight: 700 }}>
-        {value === null ? "..." : value.toLocaleString()}
+        {value === null ? "..." : value === 0 ? "0" : value.toLocaleString()}
       </div>
       <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.2rem" }}>{label}</div>
     </div>
@@ -27,24 +27,26 @@ export default function About() {
   useEffect(() => { fetchStats(); }, []);
 
   const fetchStats = async () => {
-    try {
-      const [podSnap, epSnap, userSnap, likeSnap, pinSnap, mastSnap] = await Promise.all([
-        getDocs(collection(db, "podcasts")),
-        getDocs(collection(db, "episodes")),
-        getDocs(collection(db, "users")),
-        getDocs(query(collection(db, "interactions"), where("type", "==", "like"))),
-        getDocs(query(collection(db, "episodes"), where("source", "==", "pinboard"))),
-        getDocs(query(collection(db, "episodes"), where("source", "==", "mastodon"))),
-      ]);
-      setStats({
-        podcasts: podSnap.size,
-        episodes: epSnap.size,
-        users: userSnap.size,
-        likes: likeSnap.size,
-        pinboard: pinSnap.size,
-        mastodon: mastSnap.size,
-      });
-    } catch (err) { console.error("Stats fetch error:", err); }
+    // Fetch each stat independently so one failure doesn't break all
+    const safe = async (fn) => { try { return await fn(); } catch { return null; } };
+    
+    const [podSnap, epSnap, userSnap, likeSnap, pinSnap, mastSnap] = await Promise.all([
+      safe(() => getDocs(collection(db, "podcasts"))),
+      safe(() => getDocs(collection(db, "episodes"))),
+      safe(() => getDocs(collection(db, "users"))),
+      safe(() => getDocs(query(collection(db, "interactions"), where("type", "==", "like")))),
+      safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "pinboard")))),
+      safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "mastodon")))),
+    ]);
+
+    setStats({
+      podcasts: podSnap?.size ?? 0,
+      episodes: epSnap?.size ?? 0,
+      users: userSnap?.size ?? 0,
+      likes: likeSnap?.size ?? 0,
+      pinboard: pinSnap?.size ?? 0,
+      mastodon: mastSnap?.size ?? 0,
+    });
   };
 
   return (
