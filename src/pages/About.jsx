@@ -27,9 +27,7 @@ export default function About() {
   useEffect(() => { fetchStats(); }, []);
 
   const fetchStats = async () => {
-    // Fetch each stat independently so one failure doesn't break all
     const safe = async (fn) => { try { return await fn(); } catch { return null; } };
-    
     const [podSnap, epSnap, userSnap, likeSnap, pinSnap, mastSnap] = await Promise.all([
       safe(() => getDocs(collection(db, "podcasts"))),
       safe(() => getDocs(collection(db, "episodes"))),
@@ -38,7 +36,6 @@ export default function About() {
       safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "pinboard")))),
       safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "mastodon")))),
     ]);
-
     setStats({
       podcasts: podSnap?.size ?? 0,
       episodes: epSnap?.size ?? 0,
@@ -100,7 +97,7 @@ export default function About() {
           ))}
         </div>
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
-          Every episode is analyzed by AI (Google Gemini 2.0 Flash) at import time — assigned topic tags
+          Every episode is analyzed by AI (Google Gemini 2.5 Flash) at import time — assigned topic tags
           and a relevance score against the curator's taste profile. The Discover feed uses these signals
           alongside listening history, community engagement, and recency. Three sliders let you
           tune the algorithm in real time. Every recommended episode shows a <strong style={{ color: "var(--color-text)" }}>"Why this?"</strong> chip
@@ -112,14 +109,32 @@ export default function About() {
         </p>
       </div>
 
-      {/* Video placeholder */}
-      <div style={{ background: "var(--color-surface)", border: "2px dashed var(--color-border)",
-        borderRadius: "16px", padding: "3rem 2rem", marginBottom: "2rem", textAlign: "center" }}>
-        <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎬</p>
-        <p style={{ fontWeight: 600, marginBottom: "0.4rem" }}>Video introduction coming soon</p>
-        <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
-          Wes will record a short overview of PodCommons and embed it here.
+      {/* Video Introduction */}
+      <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
+        borderRadius: "16px", padding: "2rem", marginBottom: "2rem" }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: "1.4rem", marginBottom: "1rem" }}>
+          🎬 Video Introduction
+        </h2>
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.875rem", marginBottom: "1.25rem" }}>
+          Wes gives an overview of PodCommons — what it is, why he built it, and how it works.
         </p>
+        <div style={{
+          position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden",
+          borderRadius: "10px", background: "var(--color-bg)"
+        }}>
+          <iframe
+            src="https://www.youtube.com/embed/o-IsBZzpGkc?si=8e3mGbhTdqkf8qdW"
+            title="PodCommons Introduction by Wes Fryer"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+            style={{
+              position: "absolute", top: 0, left: 0,
+              width: "100%", height: "100%", borderRadius: "10px"
+            }}
+          />
+        </div>
       </div>
 
       {/* Features */}
@@ -130,12 +145,12 @@ export default function About() {
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.25rem" }}>
           {[
-            { icon: "🧠", title: "AI-Powered Discovery", desc: "Every episode analyzed by Gemini Flash — topic tags, taste scores, and relevance reasons assigned at import time" },
+            { icon: "🧠", title: "AI-Powered Discovery", desc: "Every episode analyzed by Gemini 2.5 Flash — topic tags, taste scores, and relevance reasons assigned at import time" },
             { icon: "⚙️", title: "Tunable Algorithm", desc: "Three sliders adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time" },
             { icon: "🔍", title: "Why This?", desc: "Every episode card shows exactly which signals surfaced it — history match, topic match, community score, recency" },
             { icon: "📡", title: "RSS + OPML Import", desc: "Import your entire podcast subscription list via OPML. Automatic RSS polling every 4 hours keeps episodes fresh" },
             { icon: "🎧", title: "Listening Queue", desc: "Add episodes to your personal queue from any card or detail page. Access your queue from your profile" },
-            { icon: "🏷️", title: "Topic Filtering", desc: "Filter the feed by topic — AI & Technology, Democracy & Civic, Education, Faith, History, and more" },
+            { icon: "🏷️", title: "Topic Filtering", desc: "Filter the feed by topic — AI & Technology, Democracy & Civic, Education, Faith, History, and 15 more categories" },
             { icon: "👥", title: "Community Features", desc: "Like, favorite, comment, and queue episodes. Community engagement feeds back into the algorithm" },
             { icon: "🐘", title: "Open Web", desc: "Share to Mastodon (your server) and Bluesky. Import from Pinboard and Mastodon. Built on RSS and open standards" },
             { icon: "🎙️", title: "Host Showcase", desc: "First-party shows get their own pages with full episode archives, artwork, and RSS/website links" },
@@ -163,7 +178,7 @@ export default function About() {
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1rem" }}>
           {[
-            { icon: "🤖", label: "AI Taste Score", desc: "Gemini Flash analyzes each episode's title and description against the curator's taste profile. Scored 0–1 at import time." },
+            { icon: "🤖", label: "AI Taste Score", desc: "Gemini 2.5 Flash analyzes each episode's title and description against the curator's taste profile. Scored 0–1 at import time." },
             { icon: "📚", label: "Listening History Match", desc: "How closely the show matches the curator's Pocket Casts listening history across 90+ entries." },
             { icon: "🕐", label: "Recency", desc: "Configurable decay — 14-day aggressive (Recent slider) to 180-day gentle (Timeless slider)." },
             { icon: "🔥", label: "Community Engagement", desc: "Normalized likes, favorites, and comments from community members." },
@@ -201,7 +216,7 @@ export default function About() {
             "Email digest",
             "Embeddable episode widget",
             "Native Bluesky AT Protocol posting",
-            "Listening progress tracking",
+            "Cross-device resume playback",
             "Community group sub-feeds",
           ].map(item => (
             <div key={item} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -269,7 +284,7 @@ export default function About() {
           and facilitates monthly national webinars on AI literacy.
         </p>
         <p style={{ color: "var(--color-text-muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
-          PodCommons was built in April 2026 through collaborative vibe-coding sessions with Claude AI.
+          PodCommons was built in April–May 2026 through collaborative vibe-coding sessions with Claude AI.
           It is open source under the MIT License.
         </p>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
