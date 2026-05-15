@@ -50,11 +50,13 @@ export default function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-3">
 
+          {/* About — always visible including mobile */}
           <Link to="/about"
             style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
-            className="hover:text-white transition-colors hidden sm:block">
+            className="hover:text-white transition-colors">
             About
           </Link>
+
           {user && profile && (
             <Link to={`/profile/${profile.username}?tab=queue`}
               title="My Listening Queue"
@@ -81,7 +83,8 @@ export default function Navbar() {
                 className="flex items-center gap-2">
                 <img src={gravatarUrl(user.email)} alt="avatar" className="rounded-full"
                   style={{ width: 32, height: 32, border: "2px solid var(--color-border)" }} />
-                <span style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}
+                  className="hidden sm:inline">
                   {profile?.username || user.displayName?.split(" ")[0]}
                 </span>
               </button>
@@ -99,7 +102,7 @@ export default function Navbar() {
                   ⚙️
                 </Link>
               )}
-              <button onClick={logout} className="btn-ghost"
+              <button onClick={logout} className="btn-ghost hidden sm:block"
                 style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>
                 Sign out
               </button>
@@ -114,7 +117,8 @@ export default function Navbar() {
                 }}>
                 Sign in
               </button>
-              <button onClick={login} className="btn-primary" style={{ fontSize: "0.85rem" }}>
+              <button onClick={login} className="btn-primary hidden sm:block"
+                style={{ fontSize: "0.85rem" }}>
                 Join Community
               </button>
             </div>

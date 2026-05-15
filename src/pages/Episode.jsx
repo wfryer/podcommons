@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, getDocs, orderBy, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, increment, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import WhyThisModal from "../components/WhyThisModal";
@@ -21,8 +21,6 @@ function formatDate(ts) {
   const date = ts.toDate ? ts.toDate() : new Date(ts);
   return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
-
-// stripHtml imported from textUtils
 
 export default function Episode() {
   const { id } = useParams();
@@ -55,13 +53,18 @@ export default function Episode() {
       setFavoriteCount(data.favoriteCount || 0);
       setFeatured(data.featuredByAdmin || false);
     }
-    // Check existing interactions
     if (user) {
       try {
-        const [qSnap] = await Promise.all([
+        const [likeSnap, favSnap, qSnap] = await Promise.all([
           getDocs(query(collection(db, "interactions"),
-            where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "queue")))
+            where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "like"))),
+          getDocs(query(collection(db, "interactions"),
+            where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "favorite"))),
+          getDocs(query(collection(db, "interactions"),
+            where("userId", "==", user.uid), where("episodeId", "==", id), where("type", "==", "queue"))),
         ]);
+        setLiked(!likeSnap.empty);
+        setFavorited(!favSnap.empty);
         setQueued(!qSnap.empty);
       } catch (err) {}
     }
@@ -70,15 +73,22 @@ export default function Episode() {
 
   const fetchComments = async () => {
     try {
+      // No orderBy to avoid composite index requirement — sort client-side
       const q = query(
         collection(db, "interactions"),
         where("episodeId", "==", id),
         where("type", "==", "comment"),
-        where("status", "==", "approved"),
-        orderBy("createdAt", "desc")
+        where("status", "==", "approved")
       );
       const snap = await getDocs(q);
-      setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const sorted = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return dateB - dateA;
+        });
+      setComments(sorted);
     } catch (err) {
       console.error("Comments fetch error:", err);
     }
@@ -92,16 +102,14 @@ export default function Episode() {
     if (!snap.empty) {
       await deleteDoc(doc(db, "interactions", snap.docs[0].id));
       await updateDoc(doc(db, "episodes", id), { likeCount: increment(-1) });
-      setLiked(false);
-      setLikeCount(c => Math.max(0, c - 1));
+      setLiked(false); setLikeCount(c => Math.max(0, c - 1));
     } else {
       await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: id, type: "like",
         status: profile?.role === "new" ? "pending" : "approved", createdAt: new Date(),
       });
       await updateDoc(doc(db, "episodes", id), { likeCount: increment(1) });
-      setLiked(true);
-      setLikeCount(c => c + 1);
+      setLiked(true); setLikeCount(c => c + 1);
     }
   };
 
@@ -113,16 +121,14 @@ export default function Episode() {
     if (!snap.empty) {
       await deleteDoc(doc(db, "interactions", snap.docs[0].id));
       await updateDoc(doc(db, "episodes", id), { favoriteCount: increment(-1) });
-      setFavorited(false);
-      setFavoriteCount(c => Math.max(0, c - 1));
+      setFavorited(false); setFavoriteCount(c => Math.max(0, c - 1));
     } else {
       await addDoc(collection(db, "interactions"), {
         userId: user.uid, episodeId: id, type: "favorite",
         status: "approved", createdAt: new Date(),
       });
       await updateDoc(doc(db, "episodes", id), { favoriteCount: increment(1) });
-      setFavorited(true);
-      setFavoriteCount(c => c + 1);
+      setFavorited(true); setFavoriteCount(c => c + 1);
     }
   };
 
@@ -164,24 +170,25 @@ export default function Episode() {
   const handleComment = async () => {
     if (!user || !commentText.trim()) return;
     setSubmitting(true);
+    const isApproved = profile?.role === "trusted" || profile?.role === "admin";
     const interaction = {
       userId: user.uid,
       username: profile?.username || "anonymous",
       episodeId: id,
       type: "comment",
       content: commentText.trim(),
-      status: profile?.role === "trusted" || profile?.role === "admin" ? "approved" : "pending",
+      status: isApproved ? "approved" : "pending",
       createdAt: new Date(),
     };
     await addDoc(collection(db, "interactions"), interaction);
-    if (profile?.role === "new") {
+    if (!isApproved) {
       await addDoc(collection(db, "moderationQueue"), { ...interaction, type: "comment" });
     }
     await updateDoc(doc(db, "episodes", id), { commentCount: increment(1) });
     setCommentText("");
     setSubmitting(false);
-    if (interaction.status === "approved") {
-      setComments(prev => [{ ...interaction, id: Date.now() }, ...prev]);
+    if (isApproved) {
+      setComments(prev => [{ ...interaction, id: Date.now().toString() }, ...prev]);
     } else {
       alert("Your comment has been submitted for review and will appear once approved.");
     }
@@ -199,27 +206,24 @@ export default function Episode() {
     </div>
   );
 
-  const cleanDescription = stripHtml(episode.description);
+  const cleanDescription = episode.description ? stripHtml(decodeEntities(episode.description)) : "";
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-
       <Link to="/" style={{ color: "var(--color-text-muted)", fontSize: "0.85rem",
         display: "inline-flex", alignItems: "center", gap: "0.3rem", marginBottom: "1.5rem" }}>
         ← Back to feed
       </Link>
 
       {/* Episode header */}
-      <div style={{ display: "flex", gap: "1.25rem", marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "flex-start" }}>
         {episode.imageUrl ? (
-          <img src={episode.imageUrl} alt={decodeEntities(episode.title)}
-            style={{ width: 100, height: 100, borderRadius: "12px", objectFit: "cover", flexShrink: 0 }} />
+          <img src={episode.imageUrl} alt={episode.podcastTitle}
+            style={{ width: 120, height: 120, borderRadius: "10px", objectFit: "cover", flexShrink: 0 }} />
         ) : (
-          <div style={{
-            width: 100, height: 100, borderRadius: "12px", flexShrink: 0,
+          <div style={{ width: 120, height: 120, borderRadius: "10px", flexShrink: 0,
             background: "var(--color-border)", display: "flex",
-            alignItems: "center", justifyContent: "center", fontSize: "2rem"
-          }}>🎙️</div>
+            alignItems: "center", justifyContent: "center", fontSize: "2rem" }}>🎙️</div>
         )}
         <div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.4rem", lineHeight: 1.3, marginBottom: "0.4rem" }}>
@@ -246,11 +250,14 @@ export default function Episode() {
         <AudioPlayer
           audioUrl={episode.audioUrl}
           episodeUrl={episode.episodeUrl}
+          episodeId={episode.id}
           title={decodeEntities(episode.title)}
+          imageUrl={episode.imageUrl}
+          podcastTitle={decodeEntities(episode.podcastTitle)}
         />
       )}
 
-      {/* Description — HTML stripped */}
+      {/* Description */}
       {cleanDescription && (
         <div style={{
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
@@ -320,10 +327,8 @@ export default function Episode() {
             style={{
               display: "flex", alignItems: "center", gap: "0.4rem",
               padding: "0.5rem 1rem", borderRadius: "8px",
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text-muted)",
-              cursor: "pointer", fontSize: "0.875rem"
+              background: "var(--color-surface)", border: "1px solid var(--color-border)",
+              color: "var(--color-text-muted)", cursor: "pointer", fontSize: "0.875rem"
             }}>
             🚩 Flag
           </button>

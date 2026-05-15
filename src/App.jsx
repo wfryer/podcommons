@@ -11,16 +11,12 @@ import Show from "./pages/Show";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
 import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
 
-// Guard: only redirect when we're 100% sure user has no profile
-// undefined = still loading, null = confirmed no profile
 function RequireProfile({ children }) {
   const { user, profile, loading } = useAuth();
-  // Still resolving auth or profile — wait
   if (loading || user === undefined || profile === undefined) return null;
-  // Confirmed: logged in AND no profile exists
   if (user && profile === null) return <Navigate to="/complete-profile" replace />;
-  // All other cases: show the page
   return children;
 }
 
@@ -28,29 +24,25 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <div className="min-h-screen" style={{ background: "var(--color-bg)", color: "var(--color-text)" }}>
+        <div className="min-h-screen" style={{ background: "var(--color-bg)", color: "var(--color-text)",
+          display: "flex", flexDirection: "column" }}>
           <Navbar />
-          <Routes>
-            {/* Home requires profile */}
-            <Route path="/" element={<RequireProfile><Home /></RequireProfile>} />
-
-            {/* Always public */}
-            <Route path="/about" element={<About />} />
-            <Route path="/suggest" element={<Suggest />} />
-            <Route path="/episode/:id" element={<Episode />} />
-            <Route path="/show/:slug" element={<Show />} />
-            <Route path="/profile/:username" element={<Profile />} />
-
-            {/* Auth flows */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/complete-profile" element={<CompleteProfile />} />
-            <Route path="/settings" element={<Settings />} />
-
-            {/* Admin */}
-            <Route path="/admin" element={<Admin />} />
-
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+          <div style={{ flex: 1 }}>
+            <Routes>
+              <Route path="/" element={<RequireProfile><Home /></RequireProfile>} />
+              <Route path="/about" element={<About />} />
+              <Route path="/suggest" element={<Suggest />} />
+              <Route path="/episode/:id" element={<Episode />} />
+              <Route path="/show/:slug" element={<Show />} />
+              <Route path="/profile/:username" element={<Profile />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/complete-profile" element={<CompleteProfile />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </div>
+          <Footer />
         </div>
       </BrowserRouter>
     </AuthProvider>
