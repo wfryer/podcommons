@@ -342,7 +342,9 @@ function UserManagement() {
             borderRadius: "10px", padding: "0.875rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
             <div>
               <p style={{ fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                @{user.username} {roleBadge(user.role)}
+                <a href={`/profile/${user.username}`} style={{ color: "var(--color-accent)", textDecoration: "none" }}>
+                  @{user.username}
+                </a> {roleBadge(user.role)}
               </p>
               <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
                 {user.email} · {user.createdAt?.toDate?.().toLocaleDateString()}
