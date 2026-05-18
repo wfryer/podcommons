@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { collection, getDocs, query, orderBy, limit, where, addDoc, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { Link, useNavigate } from "react-router-dom";
@@ -28,9 +28,9 @@ function PodcastPreview({ podcast, onClose }) {
   const [suggested, setSuggested] = useState({});
   const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 
-  useState(() => {
+  useEffect(() => {
     fetchEpisodes();
-  }, []);
+  }, [podcast.id]);
 
   const fetchEpisodes = async () => {
     setLoading(true);
