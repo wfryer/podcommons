@@ -20,7 +20,7 @@ function formatDuration(seconds) {
 }
 
 // ─── Podcast Preview Modal ─────────────────────────────────────────────────────
-function PodcastPreview({ podcast, onClose }) {
+function PodcastPreview({ podcast, preloadedEpisodes = [], onClose }) {
   const { user, profile } = useAuth();
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,49 +29,33 @@ function PodcastPreview({ podcast, onClose }) {
   const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 
   useEffect(() => {
-    fetchEpisodes();
+    if (preloadedEpisodes.length > 0) {
+      setEpisodes(preloadedEpisodes);
+      setLoading(false);
+    } else {
+      fetchEpisodes();
+    }
   }, [podcast.id]);
 
   const fetchEpisodes = async () => {
     setLoading(true);
     try {
-      // Try by podcastId first
-      let snap = await getDocs(query(
+      const snap = await getDocs(query(
         collection(db, "episodes"),
         where("podcastId", "==", podcast.id),
-        orderBy("publishedAt", "desc"),
         limit(20)
       ));
-
-      // Fall back to matching by podcast title
-      if (snap.empty && podcast.title) {
-        snap = await getDocs(query(
-          collection(db, "episodes"),
-          where("podcastTitle", "==", podcast.title),
-          orderBy("publishedAt", "desc"),
-          limit(20)
-        ));
-      }
-
-      setEpisodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      // If orderBy fails, try without it
-      try {
-        const snap2 = await getDocs(query(
-          collection(db, "episodes"),
-          where("podcastTitle", "==", podcast.title),
-          limit(20)
-        ));
-        const sorted = snap2.docs.map(d => ({ id: d.id, ...d.data() }))
+      if (!snap.empty) {
+        const sorted = snap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a, b) => {
             const dateA = a.publishedAt?.toDate ? a.publishedAt.toDate() : new Date(0);
             const dateB = b.publishedAt?.toDate ? b.publishedAt.toDate() : new Date(0);
             return dateB - dateA;
           });
         setEpisodes(sorted);
-      } catch (err2) {
-        console.error(err2);
       }
+    } catch (err) {
+      console.error(err);
     }
     setLoading(false);
   };
@@ -239,6 +223,7 @@ export default function Search() {
   const [searched, setSearched] = useState(false);
   const [activeTab, setActiveTab] = useState("episodes");
   const [selectedPodcast, setSelectedPodcast] = useState(null);
+  const [selectedPodcastEpisodes, setSelectedPodcastEpisodes] = useState([]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -390,7 +375,15 @@ export default function Search() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 {results.podcasts.map(pod => (
-                  <button key={pod.id} onClick={() => setSelectedPodcast(pod)}
+                  <button key={pod.id} onClick={() => {
+                    setSelectedPodcast(pod);
+                    // Pre-filter episodes we already have from search
+                    const podEps = results.episodes.filter(e =>
+                      e.podcastId === pod.id ||
+                      decodeEntities(e.podcastTitle || "").toLowerCase() === (pod.title || "").toLowerCase()
+                    );
+                    setSelectedPodcastEpisodes(podEps);
+                  }}
                     style={{
                       width: "100%", textAlign: "left", background: "none",
                       border: "none", cursor: "pointer", padding: 0
@@ -440,7 +433,8 @@ export default function Search() {
       {selectedPodcast && (
         <PodcastPreview
           podcast={selectedPodcast}
-          onClose={() => setSelectedPodcast(null)}
+          preloadedEpisodes={selectedPodcastEpisodes}
+          onClose={() => { setSelectedPodcast(null); setSelectedPodcastEpisodes([]); }}
         />
       )}
     </div>
