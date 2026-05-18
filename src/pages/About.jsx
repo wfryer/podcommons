@@ -129,10 +129,7 @@ export default function About() {
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
-            style={{
-              position: "absolute", top: 0, left: 0,
-              width: "100%", height: "100%", borderRadius: "10px"
-            }}
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", borderRadius: "10px" }}
           />
         </div>
       </div>
@@ -145,18 +142,20 @@ export default function About() {
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.25rem" }}>
           {[
-            { icon: "🧠", title: "AI-Powered Discovery", desc: "Every episode analyzed by Gemini 2.5 Flash — topic tags, taste scores, and relevance reasons assigned at import time" },
-            { icon: "⚙️", title: "Tunable Algorithm", desc: "Three sliders adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time" },
-            { icon: "🔍", title: "Why This?", desc: "Every episode card shows exactly which signals surfaced it — history match, topic match, community score, recency" },
-            { icon: "📡", title: "RSS + OPML Import", desc: "Import your entire podcast subscription list via OPML. Automatic RSS polling every 4 hours keeps episodes fresh" },
-            { icon: "🎧", title: "Listening Queue", desc: "Add episodes to your personal queue from any card or detail page. Access your queue from your profile" },
-            { icon: "🏷️", title: "Topic Filtering", desc: "Filter the feed by topic — AI & Technology, Democracy & Civic, Education, Faith, History, and 15 more categories" },
-            { icon: "👥", title: "Community Features", desc: "Like, favorite, comment, and queue episodes. Community engagement feeds back into the algorithm" },
-            { icon: "🐘", title: "Open Web", desc: "Share to Mastodon (your server) and Bluesky. Import from Pinboard and Mastodon. Built on RSS and open standards" },
-            { icon: "🎙️", title: "Host Showcase", desc: "First-party shows get their own pages with full episode archives, artwork, and RSS/website links" },
-            { icon: "🛡️", title: "Moderation", desc: "Three-tier trust system. Flagging queue. Admin dashboard with feed management, user roles, and error logs" },
-            { icon: "👤", title: "Member Profiles", desc: "Public profiles with activity feeds, favorites, listening queues, and podcast suggestion forms" },
-            { icon: "🔒", title: "Privacy Controls", desc: "Set your profile to Public, Members Only, or Private. Your data is yours" },
+            { icon: "🧠", title: "AI-Powered Discovery", desc: "Every episode analyzed by Gemini 2.5 Flash — topic tags, taste scores, and relevance reasons assigned at import time. 3,700+ episodes already tagged." },
+            { icon: "⚙️", title: "Tunable Algorithm", desc: "Three sliders adjust Discovery vs. Familiar, Recent vs. Timeless, and My Taste vs. Community in real time. Settings saved to your profile." },
+            { icon: "🔍", title: "Why This?", desc: "Every episode card shows exactly which signals surfaced it — history match, topic match, community score, recency." },
+            { icon: "🔎", title: "Search", desc: "Search across 3,700+ episodes and 400+ podcasts by title, show name, or description. Click any podcast to preview its recent episodes." },
+            { icon: "📡", title: "RSS + OPML Import", desc: "Import your entire podcast subscription list via OPML. Automatic RSS polling every 4 hours keeps episodes fresh." },
+            { icon: "🎧", title: "Listening Queue", desc: "Episodes auto-add to your queue when you press play. Access your queue from your profile. Remove completed episodes with one tap." },
+            { icon: "▶️", title: "Resume Playback", desc: "Position saved every 10 seconds. Resume from where you left off — offers to resume or start over when you return." },
+            { icon: "🏷️", title: "Topic Filtering", desc: "Filter the feed by topic — AI & Technology, Democracy & Civic, Education, Faith, History, and 15 more categories." },
+            { icon: "👥", title: "Community Features", desc: "Like, favorite, comment, and queue episodes. Suggest podcasts for the curator to add. Community engagement feeds back into the algorithm." },
+            { icon: "🐘", title: "Open Web", desc: "Share to Mastodon (your server) and Bluesky. Import from Pinboard and Mastodon. Built on RSS and open standards." },
+            { icon: "🎙️", title: "Host Showcase", desc: "First-party shows get their own pages with full episode archives, artwork, and RSS/website links." },
+            { icon: "🛡️", title: "Moderation", desc: "Three-tier trust system. Flagging queue with episode details. Admin dashboard with feed management, user roles, and error logs." },
+            { icon: "👤", title: "Member Profiles", desc: "Public profiles with activity feeds, favorites, listening queues, and podcast suggestion forms." },
+            { icon: "🔒", title: "Privacy Controls", desc: "Set your profile to Public, Members Only, or Private. Your data is yours." },
           ].map(f => (
             <div key={f.title}>
               <p style={{ fontSize: "1.25rem", marginBottom: "0.3rem" }}>{f.icon}</p>
@@ -210,14 +209,16 @@ export default function About() {
           {[
             "PodCommons RSS output feeds",
             "Per-user personalized taste profiles",
+            "Top 10 favorite podcasts per member",
             "Data export (OPML, activity, LLM-ready)",
-            "Podcast + episode search",
             "Mobile app (iOS + Android)",
             "Email digest",
             "Embeddable episode widget",
             "Native Bluesky AT Protocol posting",
             "Cross-device resume playback",
             "Community group sub-feeds",
+            "Active discussions feed",
+            "Error feed dashboard for admins",
           ].map(item => (
             <div key={item} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <span style={{ color: "var(--color-accent)", fontSize: "0.8rem" }}>◦</span>
@@ -253,15 +254,6 @@ export default function About() {
             <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
               className="btn-ghost" style={{ fontSize: "0.85rem", padding: "0.4rem 1rem", textDecoration: "none" }}>
               {l.label}
-            </a>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          {["/feed.xml", "/feed/admin-picks.xml", "/feed/community.xml"].map(f => (
-            <a key={f} href={f} style={{ fontSize: "0.8rem", color: "var(--color-accent)",
-              textDecoration: "none", border: "1px solid rgba(245,158,11,0.3)",
-              padding: "0.3rem 0.75rem", borderRadius: "6px" }}>
-              📡 {f}
             </a>
           ))}
         </div>
@@ -304,13 +296,21 @@ export default function About() {
 
       {/* CTA */}
       <div style={{ textAlign: "center", padding: "2rem" }}>
-        <p style={{ color: "var(--color-text-muted)", marginBottom: "1rem" }}>
+        <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap", marginBottom: "1rem" }}>
+          <Link to="/" className="btn-primary"
+            style={{ textDecoration: "none", padding: "0.75rem 2rem", fontSize: "1rem" }}>
+            ← Back to the feed
+          </Link>
+          <Link to="/search"
+            style={{ textDecoration: "none", padding: "0.75rem 2rem", fontSize: "1rem",
+              border: "1px solid var(--color-border)", borderRadius: "8px",
+              color: "var(--color-text-muted)" }}>
+            🔍 Search episodes
+          </Link>
+        </div>
+        <p style={{ color: "var(--color-text-muted)" }}>
           Share PodCommons with <strong style={{ color: "var(--color-accent)" }}>#podcommons</strong>
         </p>
-        <Link to="/" className="btn-primary"
-          style={{ textDecoration: "none", padding: "0.75rem 2rem", fontSize: "1rem" }}>
-          ← Back to the feed
-        </Link>
       </div>
     </div>
   );
