@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 
@@ -13,7 +13,7 @@ function formatTime(seconds) {
 }
 
 const RESUME_KEY = (episodeId) => episodeId ? `podcommons_pos_${episodeId}` : null;
-const SAVE_INTERVAL = 10; // save position every 10 seconds
+const SAVE_INTERVAL = 10;
 
 export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, imageUrl, podcastTitle }) {
   const { user } = useAuth();
@@ -26,26 +26,24 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
   const [error, setError] = useState(false);
   const [resumed, setResumed] = useState(false);
   const [savedPosition, setSavedPosition] = useState(0);
+  const [showCompletedBanner, setShowCompletedBanner] = useState(false);
 
-  // One-time cleanup of bad saved positions (from the undefined key bug)
+  // Cleanup bad keys
   useEffect(() => {
     localStorage.removeItem('podcommons_pos_undefined');
     localStorage.removeItem('podcommons_pos_null');
   }, []);
 
-  // Load saved position on mount
+  // Load saved position
   useEffect(() => {
-    // Only load saved position if we have a valid episodeId
     const key = RESUME_KEY(episodeId);
     if (!key) return;
     const saved = localStorage.getItem(key);
     if (saved) {
       const pos = parseFloat(saved);
-      // Only resume if more than 30 seconds in (increased from 10 to avoid false positives)
       if (pos > 30 && !isNaN(pos)) {
         setSavedPosition(pos);
       } else {
-        // Clear any invalid saved positions
         localStorage.removeItem(key);
       }
     }
@@ -62,6 +60,49 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
     }
   };
 
+  // Auto-add to queue when play starts
+  const autoAddToQueue = async () => {
+    if (!user || !episodeId) return;
+    try {
+      const existing = await getDocs(query(
+        collection(db, "interactions"),
+        where("userId", "==", user.uid),
+        where("episodeId", "==", episodeId),
+        where("type", "==", "queue")
+      ));
+      if (existing.empty) {
+        await addDoc(collection(db, "interactions"), {
+          userId: user.uid,
+          episodeId,
+          type: "queue",
+          status: "approved",
+          createdAt: new Date(),
+        });
+      }
+    } catch (err) {
+      console.error("Auto-queue error:", err);
+    }
+  };
+
+  // Remove from queue
+  const removeFromQueue = async () => {
+    if (!user || !episodeId) return;
+    try {
+      const snap = await getDocs(query(
+        collection(db, "interactions"),
+        where("userId", "==", user.uid),
+        where("episodeId", "==", episodeId),
+        where("type", "==", "queue")
+      ));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, "interactions", d.id));
+      }
+    } catch (err) {
+      console.error("Remove queue error:", err);
+    }
+    setShowCompletedBanner(false);
+  };
+
   const togglePlay = () => {
     if (!audioRef.current) return;
     if (playing) {
@@ -71,7 +112,6 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
       if (saveTimerRef.current) clearInterval(saveTimerRef.current);
     } else {
       setLoading(true);
-      // Resume from saved position if not already resumed
       if (!resumed && savedPosition > 0) {
         audioRef.current.currentTime = savedPosition;
         setResumed(true);
@@ -80,8 +120,9 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
         .then(() => {
           setPlaying(true);
           setLoading(false);
-          // Save position every 10 seconds while playing
           saveTimerRef.current = setInterval(savePosition, SAVE_INTERVAL * 1000);
+          // Auto-add to queue when playback starts
+          autoAddToQueue();
         })
         .catch(() => { setError(true); setLoading(false); });
     }
@@ -98,11 +139,14 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
 
   const handleTimeUpdate = () => setCurrentTime(audioRef.current?.currentTime || 0);
   const handleLoadedMetadata = () => setDuration(audioRef.current?.duration || 0);
+
   const handleEnded = () => {
     setPlaying(false);
     const key = RESUME_KEY(episodeId);
-    if (key) localStorage.removeItem(key); // clear saved position on completion
+    if (key) localStorage.removeItem(key);
     if (saveTimerRef.current) clearInterval(saveTimerRef.current);
+    // Show completed banner offering to remove from queue
+    if (user && episodeId) setShowCompletedBanner(true);
   };
 
   const handleSeek = (e) => {
@@ -156,9 +200,7 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
             position: "absolute", inset: 0,
             background: "linear-gradient(to bottom, transparent 40%, var(--color-surface) 100%)"
           }} />
-          <div style={{
-            position: "absolute", bottom: "1rem", left: "1rem", right: "1rem"
-          }}>
+          <div style={{ position: "absolute", bottom: "1rem", left: "1rem", right: "1rem" }}>
             <p style={{ fontWeight: 700, fontSize: "1rem", color: "white",
               textShadow: "0 1px 4px rgba(0,0,0,0.8)", lineHeight: 1.3 }}>
               {title}
@@ -175,6 +217,32 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
 
       {/* Player controls */}
       <div style={{ padding: "1.25rem" }}>
+
+        {/* Completed banner */}
+        {showCompletedBanner && (
+          <div style={{
+            background: "rgba(74,222,128,0.1)", border: "1px solid #4ade80",
+            borderRadius: "8px", padding: "0.5rem 0.875rem",
+            marginBottom: "1rem", display: "flex", justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+            <p style={{ fontSize: "0.78rem", color: "#4ade80" }}>
+              ✓ Episode complete!
+            </p>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button onClick={removeFromQueue}
+                style={{ background: "none", border: "1px solid #4ade80", cursor: "pointer",
+                  fontSize: "0.72rem", color: "#4ade80", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>
+                Remove from queue
+              </button>
+              <button onClick={() => setShowCompletedBanner(false)}
+                style={{ background: "none", border: "none", cursor: "pointer",
+                  fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+                Keep in queue
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Resume notice */}
         {savedPosition > 0 && !resumed && (
@@ -203,10 +271,7 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
 
         {/* Scrubber */}
         <div style={{ marginBottom: "0.5rem" }}>
-          <input
-            type="range" min={0} max={100}
-            value={progress}
-            onChange={handleSeek}
+          <input type="range" min={0} max={100} value={progress} onChange={handleSeek}
             style={{
               width: "100%", height: 6, cursor: "pointer",
               accentColor: "var(--color-accent)",
@@ -224,57 +289,37 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
         </div>
 
         {/* Main controls */}
-        <div style={{
-          display: "flex", alignItems: "center",
-          justifyContent: "center", gap: "1.5rem", marginTop: "0.75rem"
-        }}>
+        <div style={{ display: "flex", alignItems: "center",
+          justifyContent: "center", gap: "1.5rem", marginTop: "0.75rem" }}>
 
-          {/* Rewind 30s */}
-          <button onClick={() => skip(-30)}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: "0.2rem", padding: "0.5rem",
-            }}>
+          <button onClick={() => skip(-30)} style={{
+            background: "none", border: "none", cursor: "pointer",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            gap: "0.2rem", padding: "0.5rem" }}>
             <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-              <path d="M18 6C11.373 6 6 11.373 6 18s5.373 12 12 12 12-5.373 12-12" 
+              <path d="M18 6C11.373 6 6 11.373 6 18s5.373 12 12 12 12-5.373 12-12"
                 stroke="var(--color-text-muted)" strokeWidth="2.5" strokeLinecap="round"/>
               <path d="M18 6l-4 4 4 4" stroke="var(--color-text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               <text x="18" y="21" textAnchor="middle" fontSize="9" fill="var(--color-text-muted)" fontWeight="600">30</text>
             </svg>
           </button>
 
-          {/* Big Play/Pause button */}
-          <button onClick={togglePlay} disabled={loading}
-            style={{
-              width: 72, height: 72, borderRadius: "50%",
-              background: "var(--color-accent)",
-              border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "1.8rem", color: "#000",
-              boxShadow: "0 4px 20px rgba(245,158,11,0.4)",
-              transition: "transform 0.1s, box-shadow 0.1s",
-              flexShrink: 0,
-            }}
-            onMouseDown={e => {
-              e.currentTarget.style.transform = "scale(0.93)";
-              e.currentTarget.style.boxShadow = "0 2px 10px rgba(245,158,11,0.3)";
-            }}
-            onMouseUp={e => {
-              e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow = "0 4px 20px rgba(245,158,11,0.4)";
-            }}
-          >
+          <button onClick={togglePlay} disabled={loading} style={{
+            width: 72, height: 72, borderRadius: "50%",
+            background: "var(--color-accent)", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "1.8rem", color: "#000",
+            boxShadow: "0 4px 20px rgba(245,158,11,0.4)",
+            transition: "transform 0.1s, box-shadow 0.1s", flexShrink: 0 }}
+            onMouseDown={e => { e.currentTarget.style.transform = "scale(0.93)"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(245,158,11,0.3)"; }}
+            onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(245,158,11,0.4)"; }}>
             {loading ? "⟳" : playing ? "⏸" : "▶"}
           </button>
 
-          {/* Forward 30s */}
-          <button onClick={() => skip(30)}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: "0.2rem", padding: "0.5rem",
-            }}>
+          <button onClick={() => skip(30)} style={{
+            background: "none", border: "none", cursor: "pointer",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            gap: "0.2rem", padding: "0.5rem" }}>
             <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
               <path d="M18 6C24.627 6 30 11.373 30 18s-5.373 12-12 12-12-5.373-12-12"
                 stroke="var(--color-text-muted)" strokeWidth="2.5" strokeLinecap="round"/>
@@ -284,14 +329,10 @@ export default function AudioPlayer({ audioUrl, episodeUrl, episodeId, title, im
           </button>
         </div>
 
-        {/* Open externally */}
         {episodeUrl && (
           <div style={{ textAlign: "center", marginTop: "1rem" }}>
             <a href={episodeUrl} target="_blank" rel="noopener noreferrer"
-              style={{
-                fontSize: "0.78rem", color: "var(--color-text-muted)",
-                textDecoration: "none",
-              }}>
+              style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", textDecoration: "none" }}>
               Open Original Podcast Link ↗
             </a>
           </div>
