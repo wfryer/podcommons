@@ -22,6 +22,24 @@ function formatDate(ts) {
   return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
+// Convert URLs in text to clickable links
+function linkifyText(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+          style={{ color: "var(--color-accent)", wordBreak: "break-all" }}>
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
 export default function Episode() {
   const { id } = useParams();
   const { user, profile } = useAuth();
@@ -411,7 +429,14 @@ export default function Episode() {
                 <p style={{ fontSize: "0.8rem", color: "var(--color-accent)", marginBottom: "0.3rem", fontWeight: 600 }}>
                   @{c.username}
                 </p>
-                <p style={{ fontSize: "0.875rem", lineHeight: 1.5 }}>{c.content}</p>
+                <p style={{ fontSize: "0.875rem", lineHeight: 1.5 }}>
+                  {linkifyText(c.content)}
+                </p>
+                {c.createdAt && (
+                  <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginTop: "0.3rem" }}>
+                    {c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}
+                  </p>
+                )}
               </div>
             ))}
           </div>
