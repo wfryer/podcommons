@@ -137,7 +137,6 @@ function ModerationQueue() {
       const snap = await getDocs(query(
         collection(db, "moderationQueue"),
         where("status", "==", "pending"),
-        orderBy("createdAt", "desc"),
         limit(50)
       ));
       const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -237,7 +236,6 @@ function FlagQueue() {
       const snap = await getDocs(query(
         collection(db, "flags"),
         where("status", "==", "pending"),
-        orderBy("createdAt", "desc"),
         limit(50)
       ));
       setFlags(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -510,10 +508,15 @@ function SuggestionsQueue() {
       const snap = await getDocs(query(
         collection(db, "podcastSuggestions"),
         where("status", "==", "pending"),
-        orderBy("createdAt", "desc"),
         limit(50)
       ));
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return dateB - dateA;
+        });
+      setItems(items);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
