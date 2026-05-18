@@ -388,6 +388,8 @@ function FeedManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [editingFeed, setEditingFeed] = useState(null);
+  const [editUrl, setEditUrl] = useState("");
 
   useEffect(() => { fetchFeeds(); }, []);
 
@@ -413,6 +415,14 @@ function FeedManagement() {
       removedAt: new Date(), removedBy: "admin", reason: "admin deleted",
     });
     setFeeds(prev => prev.filter(f => f.id !== feed.id));
+  };
+
+  const updateFeedUrl = async (feed) => {
+    if (!editUrl.trim()) return;
+    await updateDoc(doc(db, "podcasts", feed.id), { feedUrl: editUrl.trim() });
+    setFeeds(prev => prev.map(f => f.id === feed.id ? { ...f, feedUrl: editUrl.trim() } : f));
+    setEditingFeed(null);
+    setEditUrl("");
   };
 
   const filtered = feeds.filter(f => {
@@ -448,7 +458,8 @@ function FeedManagement() {
         {filtered.map(feed => (
           <div key={feed.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
             borderRadius: "8px", padding: "0.75rem", display: "flex",
-            justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap",
+            borderColor: editingFeed === feed.id ? "var(--color-accent)" : "var(--color-border)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
               {feed.artworkUrl && (
                 <img src={feed.artworkUrl} alt="" style={{ width: 36, height: 36, borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
@@ -479,6 +490,12 @@ function FeedManagement() {
                   Hide
                 </button>
               )}
+              <button onClick={() => { setEditingFeed(feed.id); setEditUrl(feed.feedUrl || ""); }}
+                style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
+                  background: "rgba(99,102,241,0.1)", border: "1px solid #6366f1",
+                  color: "#6366f1", cursor: "pointer" }}>
+                Edit URL
+              </button>
               {!feed.isFirstParty && (
                 <button onClick={() => deleteFeed(feed)}
                   style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
@@ -488,6 +505,25 @@ function FeedManagement() {
                 </button>
               )}
             </div>
+            {editingFeed === feed.id && (
+              <div style={{ width: "100%", marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+                <input value={editUrl} onChange={e => setEditUrl(e.target.value)}
+                  placeholder="New RSS feed URL..."
+                  style={{ flex: 1, fontSize: "0.78rem", padding: "0.3rem 0.5rem" }} />
+                <button onClick={() => updateFeedUrl(feed)}
+                  style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem", borderRadius: "6px",
+                    background: "rgba(74,222,128,0.15)", border: "1px solid #4ade80",
+                    color: "#4ade80", cursor: "pointer" }}>
+                  Save
+                </button>
+                <button onClick={() => { setEditingFeed(null); setEditUrl(""); }}
+                  style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem", borderRadius: "6px",
+                    background: "none", border: "1px solid var(--color-border)",
+                    color: "var(--color-text-muted)", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -521,125 +557,6 @@ function SuggestionsQueue() {
     setLoading(false);
   };
 
-  const [processing, setProcessing] = useState(null);
-  const [processResult, setProcessResult] = useState({});
-  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
-
-  const detectRSSFeed = async (url) => {
-    if (!url) return null;
-    // If it already looks like an RSS feed, use it directly
-    if (url.includes('/feed') || url.includes('.rss') || url.includes('/rss') || url.includes('feeds.')) {
-      return url;
-    }
-    // Try common RSS feed patterns
-    const patterns = [
-      url.replace(/\/?$/, '/feed'),
-      url.replace(/\/?$/, '/rss'),
-      url.replace(/\/?$/, '/feed.xml'),
-      url.replace(/\/?$/, '/podcast/feed'),
-    ];
-    // For Substack
-    if (url.includes('substack.com')) {
-      const base = url.replace(/\/p\/.*/, '');
-      return `${base}/feed`;
-    }
-    // For common podcast hosts - return the URL as-is and let the poller try
-    return patterns[0];
-  };
-
-  const handleApprove = async (item) => {
-    setProcessing(item.id);
-    setProcessResult(prev => ({ ...prev, [item.id]: null }));
-    try {
-      // 1. Update suggestion status
-      await updateDoc(doc(db, "podcastSuggestions", item.id), {
-        status: "approved",
-        approvedAt: new Date(),
-      });
-
-      // 2. Try to find/import the RSS feed
-      if (item.url) {
-        const feedUrl = await detectRSSFeed(item.url);
-        
-        if (feedUrl) {
-          // Check if feed already exists
-          const existing = await getDocs(query(
-            collection(db, "podcasts"),
-            where("feedUrl", "==", feedUrl)
-          ));
-
-          let podcastId;
-          if (existing.empty) {
-            // Add new feed to podcasts collection
-            const podRef = await addDoc(collection(db, "podcasts"), {
-              feedUrl,
-              title: item.title,
-              visibility: "visible",
-              isFirstParty: false,
-              communityRecommended: true,
-              suggestedBy: item.suggestedBy,
-              suggestedByUsername: item.suggestedByUsername,
-              addedAt: new Date(),
-              lastPolledAt: null,
-            });
-            podcastId = podRef.id;
-            
-            // Trigger immediate poll of just this feed
-            try {
-              const pollUrl = `https://manualrsspoll-wktvb3f5za-uc.a.run.app?token=${ADMIN_TOKEN}&feedUrl=${encodeURIComponent(feedUrl)}&limit=1&ai=true`;
-              await fetch(pollUrl);
-            } catch (e) {
-              console.log("Poll trigger failed, will pick up on next scheduled poll");
-            }
-
-            setProcessResult(prev => ({ ...prev, [item.id]: { 
-              success: true, 
-              message: `✓ Feed "${item.title}" added! Episodes will import on next poll.`
-            }}));
-          } else {
-            podcastId = existing.docs[0].id;
-            setProcessResult(prev => ({ ...prev, [item.id]: { 
-              success: true, 
-              message: `✓ Feed already in PodCommons. Episodes will appear on next poll.`
-            }}));
-          }
-
-          // If episode was suggested, mark it as community recommended
-          if (item.type === "episode" && item.url) {
-            const epSnap = await getDocs(query(
-              collection(db, "episodes"),
-              where("episodeUrl", "==", item.url)
-            ));
-            if (!epSnap.empty) {
-              await updateDoc(doc(db, "episodes", epSnap.docs[0].id), {
-                communityRecommended: true,
-                communityRecommendedBy: item.suggestedByUsername,
-              });
-            }
-          }
-        }
-      } else {
-        setProcessResult(prev => ({ ...prev, [item.id]: { 
-          success: true, 
-          message: `✓ Suggestion approved. No URL provided — add feed manually in Feeds tab.`
-        }}));
-      }
-
-      // Remove from list after short delay to show result
-      setTimeout(() => {
-        setItems(prev => prev.filter(i => i.id !== item.id));
-      }, 3000);
-
-    } catch (err) {
-      console.error("Approve error:", err);
-      setProcessResult(prev => ({ ...prev, [item.id]: { 
-        success: false, 
-        message: `Error: ${err.message}`
-      }}));
-    }
-    setProcessing(null);
-  };
-
   const setStatus = async (id, status) => {
     await updateDoc(doc(db, "podcastSuggestions", id), { status });
     setItems(prev => prev.filter(i => i.id !== id));
@@ -669,24 +586,9 @@ function SuggestionsQueue() {
           </div>
           {item.url && <p style={{ fontSize: "0.8rem", color: "var(--color-accent)", marginBottom: "0.4rem" }}>{item.url}</p>}
           {item.reason && <p style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>"{item.reason}"</p>}
-          {processResult[item.id] && (
-            <div style={{
-              marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px",
-              background: processResult[item.id].success ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)",
-              border: `1px solid ${processResult[item.id].success ? "#4ade80" : "#f87171"}`,
-              fontSize: "0.8rem",
-              color: processResult[item.id].success ? "#4ade80" : "#f87171",
-            }}>
-              {processResult[item.id].message}
-            </div>
-          )}
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button onClick={() => handleApprove(item)} className="btn-primary"
-              disabled={processing === item.id}
-              style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem",
-                opacity: processing === item.id ? 0.7 : 1 }}>
-              {processing === item.id ? "Importing..." : "✓ Approve & Import"}
-            </button>
+            <button onClick={() => setStatus(item.id, "approved")} className="btn-primary"
+              style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>Approve</button>
             <button onClick={() => setStatus(item.id, "rejected")}
               style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem", borderRadius: "8px",
                 background: "rgba(248,113,113,0.1)", border: "1px solid #f87171",
@@ -773,6 +675,7 @@ export default function Admin() {
       {activeTab === "flags" && <FlagQueue />}
       {activeTab === "feeds" && <FeedManagement />}
       {activeTab === "users" && <UserManagement />}
+      {activeTab === "suggestions" && <SuggestionsQueue />}
     </div>
   );
 }
