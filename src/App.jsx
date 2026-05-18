@@ -10,6 +10,7 @@ import Suggest from "./pages/Suggest";
 import Show from "./pages/Show";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
+import Search from "./pages/Search";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 
@@ -31,6 +32,7 @@ function App() {
             <Routes>
               <Route path="/" element={<RequireProfile><Home /></RequireProfile>} />
               <Route path="/about" element={<About />} />
+              <Route path="/search" element={<Search />} />
               <Route path="/suggest" element={<Suggest />} />
               <Route path="/episode/:id" element={<Episode />} />
               <Route path="/show/:slug" element={<Show />} />

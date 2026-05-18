@@ -61,6 +61,14 @@ export default function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-3">
 
+          <Link to="/search"
+            title="Search episodes and podcasts"
+            style={{ color: "var(--color-text-muted)", fontSize: "1.1rem",
+              textDecoration: "none", display: "flex", alignItems: "center" }}
+            className="hover:text-white transition-colors">
+            🔍
+          </Link>
+
           <Link to="/about"
             style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
             className="hover:text-white transition-colors">
