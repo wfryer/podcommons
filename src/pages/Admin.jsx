@@ -238,7 +238,21 @@ function FlagQueue() {
         where("status", "==", "pending"),
         limit(50)
       ));
-      setFlags(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const flags = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Fetch episode details for each flag
+      const withDetails = await Promise.all(flags.map(async flag => {
+        if (flag.targetType === "episode" && flag.targetId) {
+          try {
+            const epSnap = await getDoc(doc(db, "episodes", flag.targetId));
+            if (epSnap.exists()) {
+              return { ...flag, episode: { id: epSnap.id, ...epSnap.data() } };
+            }
+          } catch (e) {}
+        }
+        return flag;
+      }));
+      setFlags(withDetails);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -267,16 +281,43 @@ function FlagQueue() {
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       {flags.map(flag => (
         <div key={flag.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "12px", padding: "1rem" }}>
-          <p style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.25rem" }}>
-            🚩 {flag.targetType} flagged
-          </p>
-          <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>
-            Reason: {flag.reason}
-          </p>
+          {/* Episode info */}
+          {flag.episode ? (
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+              {flag.episode.imageUrl && (
+                <img src={flag.episode.imageUrl} alt=""
+                  style={{ width: 48, height: 48, borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <a href={`/episode/${flag.targetId}`} target="_blank" rel="noopener noreferrer"
+                  style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--color-accent)",
+                    textDecoration: "none", display: "block", marginBottom: "0.2rem" }}>
+                  {flag.episode.title} ↗
+                </a>
+                <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
+                  {flag.episode.podcastTitle}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.5rem" }}>
+              🚩 {flag.targetType} flagged
+            </p>
+          )}
+          <div style={{ display: "flex", gap: "1rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+            <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+              <strong>Reason:</strong> {flag.reason}
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+              <strong>Flagged:</strong> {flag.createdAt?.toDate?.().toLocaleDateString()}
+            </p>
+            {flag.reportedBy && (
+              <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+                <strong>By:</strong> {flag.reportedBy.slice(0, 8)}...
+              </p>
+            )}
+          </div>
           {flag.note && <p style={{ fontSize: "0.8rem", color: "var(--color-text)", marginBottom: "0.5rem" }}>"{flag.note}"</p>}
-          <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
-            {flag.createdAt?.toDate?.().toLocaleDateString()}
-          </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button onClick={() => handleFlag(flag, "restored")} className="btn-primary"
               style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}>Restore</button>
@@ -388,8 +429,6 @@ function FeedManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [editingFeed, setEditingFeed] = useState(null);
-  const [editUrl, setEditUrl] = useState("");
 
   useEffect(() => { fetchFeeds(); }, []);
 
@@ -415,14 +454,6 @@ function FeedManagement() {
       removedAt: new Date(), removedBy: "admin", reason: "admin deleted",
     });
     setFeeds(prev => prev.filter(f => f.id !== feed.id));
-  };
-
-  const updateFeedUrl = async (feed) => {
-    if (!editUrl.trim()) return;
-    await updateDoc(doc(db, "podcasts", feed.id), { feedUrl: editUrl.trim() });
-    setFeeds(prev => prev.map(f => f.id === feed.id ? { ...f, feedUrl: editUrl.trim() } : f));
-    setEditingFeed(null);
-    setEditUrl("");
   };
 
   const filtered = feeds.filter(f => {
@@ -458,8 +489,7 @@ function FeedManagement() {
         {filtered.map(feed => (
           <div key={feed.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
             borderRadius: "8px", padding: "0.75rem", display: "flex",
-            justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap",
-            borderColor: editingFeed === feed.id ? "var(--color-accent)" : "var(--color-border)" }}>
+            justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
               {feed.artworkUrl && (
                 <img src={feed.artworkUrl} alt="" style={{ width: 36, height: 36, borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
@@ -490,12 +520,6 @@ function FeedManagement() {
                   Hide
                 </button>
               )}
-              <button onClick={() => { setEditingFeed(feed.id); setEditUrl(feed.feedUrl || ""); }}
-                style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
-                  background: "rgba(99,102,241,0.1)", border: "1px solid #6366f1",
-                  color: "#6366f1", cursor: "pointer" }}>
-                Edit URL
-              </button>
               {!feed.isFirstParty && (
                 <button onClick={() => deleteFeed(feed)}
                   style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
@@ -505,25 +529,6 @@ function FeedManagement() {
                 </button>
               )}
             </div>
-            {editingFeed === feed.id && (
-              <div style={{ width: "100%", marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
-                <input value={editUrl} onChange={e => setEditUrl(e.target.value)}
-                  placeholder="New RSS feed URL..."
-                  style={{ flex: 1, fontSize: "0.78rem", padding: "0.3rem 0.5rem" }} />
-                <button onClick={() => updateFeedUrl(feed)}
-                  style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem", borderRadius: "6px",
-                    background: "rgba(74,222,128,0.15)", border: "1px solid #4ade80",
-                    color: "#4ade80", cursor: "pointer" }}>
-                  Save
-                </button>
-                <button onClick={() => { setEditingFeed(null); setEditUrl(""); }}
-                  style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem", borderRadius: "6px",
-                    background: "none", border: "1px solid var(--color-border)",
-                    color: "var(--color-text-muted)", cursor: "pointer" }}>
-                  Cancel
-                </button>
-              </div>
-            )}
           </div>
         ))}
       </div>
