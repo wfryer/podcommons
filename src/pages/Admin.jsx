@@ -639,6 +639,7 @@ export default function Admin() {
       {activeTab === "flags" && <FlagQueue />}
       {activeTab === "feeds" && <FeedManagement />}
       {activeTab === "users" && <UserManagement />}
+      {activeTab === "suggestions" && <SuggestionsQueue />}
     </div>
   );
 }
