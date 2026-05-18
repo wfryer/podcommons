@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, limit, getDocs, where } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, where, startAfter } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { rankEpisodes } from "../utils/algorithmScorer";
@@ -22,78 +22,104 @@ const TAB_DESCRIPTIONS = {
   community: "Most liked and favorited episodes by the PodCommons community",
 };
 
+const PAGE_SIZE = 20;
+
 export default function Home() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("discover");
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [shelfVisible, setShelfVisible] = useState(true);
   const [showSliders, setShowSliders] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState(null);
+  const [lastDoc, setLastDoc] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [sliders, setSliders] = useState({
     discoveryVsFamiliar: 70,
     recentVsTimeless: 60,
     myTasteVsCommunity: 50,
   });
 
-  useEffect(() => { fetchEpisodes(); }, [activeTab, selectedTopic]);
   useEffect(() => {
-    if (activeTab === "discover" && episodes.length > 0) fetchEpisodes();
+    setLastDoc(null);
+    setEpisodes([]);
+    fetchEpisodes(true);
+  }, [activeTab, selectedTopic]);
+
+  useEffect(() => {
+    if (activeTab === "discover" && episodes.length > 0) fetchEpisodes(true);
   }, [sliders]);
 
-  const fetchEpisodes = async () => {
-    setLoading(true);
+  const fetchEpisodes = async (reset = false) => {
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
     try {
       let eps = [];
+      let newLastDoc = null;
 
       if (selectedTopic) {
-        // Use Firestore array-contains to search ALL episodes by topic
-        const snap = await getDocs(query(
+        // Paginated topic filter using array-contains
+        let q = query(
           collection(db, "episodes"),
           where("topics", "array-contains", selectedTopic),
           orderBy("publishedAt", "desc"),
-          limit(50)
-        ));
+          limit(PAGE_SIZE)
+        );
+        if (!reset && lastDoc) q = query(
+          collection(db, "episodes"),
+          where("topics", "array-contains", selectedTopic),
+          orderBy("publishedAt", "desc"),
+          startAfter(lastDoc),
+          limit(PAGE_SIZE)
+        );
+        const snap = await getDocs(q);
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        newLastDoc = snap.docs[snap.docs.length - 1] || null;
+        setHasMore(snap.docs.length === PAGE_SIZE);
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
-
-        // Apply tab-specific sorting
-        if (activeTab === "discover") {
-          eps = await rankEpisodes(eps, sliders, user?.uid || "admin");
-        } else if (activeTab === "community") {
-          eps = eps.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-        } else if (activeTab === "adminpicks") {
-          eps = eps.filter(e => e.isFirstParty === true || e.featuredByAdmin === true);
-        }
+        if (activeTab === "discover") eps = await rankEpisodes(eps, sliders, user?.uid || "admin");
+        else if (activeTab === "community") eps.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+        else if (activeTab === "adminpicks") eps = eps.filter(e => e.isFirstParty || e.featuredByAdmin);
 
       } else if (activeTab === "latest") {
-        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(30)));
+        let q = query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(PAGE_SIZE));
+        if (!reset && lastDoc) q = query(collection(db, "episodes"), orderBy("publishedAt", "desc"), startAfter(lastDoc), limit(PAGE_SIZE));
+        const snap = await getDocs(q);
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        newLastDoc = snap.docs[snap.docs.length - 1] || null;
+        setHasMore(snap.docs.length === PAGE_SIZE);
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
       } else if (activeTab === "adminpicks") {
         const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(200)));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        eps = eps.filter(e =>
-          e.visibility !== "hidden" && e.visibility !== "removed" &&
-          (e.isFirstParty === true || e.featuredByAdmin === true)
-        );
+        eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed" &&
+          (e.isFirstParty === true || e.featuredByAdmin === true));
+        setHasMore(false);
 
       } else if (activeTab === "community") {
-        const snap = await getDocs(query(collection(db, "episodes"), orderBy("likeCount", "desc"), limit(30)));
+        let q = query(collection(db, "episodes"), orderBy("likeCount", "desc"), limit(PAGE_SIZE));
+        if (!reset && lastDoc) q = query(collection(db, "episodes"), orderBy("likeCount", "desc"), startAfter(lastDoc), limit(PAGE_SIZE));
+        const snap = await getDocs(q);
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        newLastDoc = snap.docs[snap.docs.length - 1] || null;
+        setHasMore(snap.docs.length === PAGE_SIZE);
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
       } else {
-        // Discover — real personalized ranking
+        // Discover
         const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(200)));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
         eps = await rankEpisodes(eps, sliders, user?.uid || "admin");
         eps = eps.slice(0, 30);
+        setHasMore(false);
       }
 
-      setEpisodes(eps);
+      setLastDoc(newLastDoc);
+      setEpisodes(reset ? eps : prev => [...prev, ...eps]);
     } catch (err) {
       console.error("Feed fetch error:", err);
       try {
@@ -101,7 +127,9 @@ export default function Home() {
         setEpisodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (e) { setEpisodes([]); }
     }
+
     setLoading(false);
+    setLoadingMore(false);
   };
 
   const handleLucky = async () => {
@@ -119,7 +147,7 @@ export default function Home() {
 
       <WesShowsShelf visible={shelfVisible} onToggle={() => setShelfVisible(v => !v)} />
 
-      {/* Feed Tabs + Lucky Button */}
+      {/* Feed Tabs + Controls — all on same line */}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -139,23 +167,26 @@ export default function Home() {
           🎲 Lucky
         </button>
 
-        <button onClick={() => setShowSliders(!showSliders)}
-          style={{
-            marginLeft: "auto", fontSize: "0.8rem", padding: "0.4rem 0.75rem",
-            borderRadius: "8px", border: "1px solid var(--color-border)",
-            color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
-            background: "none", cursor: "pointer"
-          }}>
-          ⚙️ Feed Settings {showSliders ? "▲" : "▼"}
-        </button>
+        {/* Topic filter and Feed Settings on same level */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <TopicFilter selected={selectedTopic} onSelect={(t) => { setSelectedTopic(t); setLastDoc(null); }} />
+          <button onClick={() => setShowSliders(!showSliders)}
+            style={{
+              fontSize: "0.8rem", padding: "0.4rem 0.75rem",
+              borderRadius: "8px", border: "1px solid var(--color-border)",
+              color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
+              background: "none", cursor: "pointer", whiteSpace: "nowrap"
+            }}>
+            ⚙️ Feed Settings {showSliders ? "▲" : "▼"}
+          </button>
+        </div>
       </div>
 
-      <TopicFilter selected={selectedTopic} onSelect={(t) => { setSelectedTopic(t); }} />
-
-      {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} activeTab={activeTab} onApply={fetchEpisodes} onClose={() => setShowSliders(false)} />}
+      {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} activeTab={activeTab} onApply={() => fetchEpisodes(true)} onClose={() => setShowSliders(false)} />}
 
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
         {TAB_DESCRIPTIONS[activeTab]}
+        {selectedTopic && <span style={{ color: "var(--color-accent)" }}> · filtered by "{selectedTopic}"</span>}
       </p>
 
       {loading ? (
@@ -170,10 +201,9 @@ export default function Home() {
           <p style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🎙️</p>
           <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>No episodes here yet</p>
           <p style={{ fontSize: "0.85rem" }}>
-            {activeTab === "adminpicks" ? "Episodes from your five shows will appear here."
+            {activeTab === "adminpicks" ? "Feature episodes using the ⭐ button to populate this tab."
               : activeTab === "community" ? "Like some episodes to get the community feed going!"
-              : selectedTopic
-              ? `No episodes tagged "${selectedTopic}" yet — AI tagging is still running overnight!`
+              : selectedTopic ? `No episodes tagged "${selectedTopic}" yet.`
               : "Import your OPML file in the Admin dashboard to start pulling in podcast episodes."}
           </p>
         </div>
@@ -187,6 +217,17 @@ export default function Home() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {episodes.map(ep => <EpisodeCard key={ep.id} episode={ep} />)}
           </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <div style={{ textAlign: "center", marginTop: "2rem" }}>
+              <button onClick={() => fetchEpisodes(false)} disabled={loadingMore}
+                className="btn-ghost"
+                style={{ padding: "0.6rem 2rem", fontSize: "0.875rem" }}>
+                {loadingMore ? "Loading..." : "Load more episodes →"}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

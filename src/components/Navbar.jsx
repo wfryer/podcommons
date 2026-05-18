@@ -50,7 +50,6 @@ export default function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-3">
 
-          {/* About — always visible including mobile */}
           <Link to="/about"
             style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}
             className="hover:text-white transition-colors">
@@ -71,11 +70,14 @@ export default function Navbar() {
 
           {user ? (
             <div className="flex items-center gap-3">
+              {/* Admin link — subtle text instead of prominent button */}
               {profile?.role === "admin" && (
                 <Link to="/admin"
-                  style={{ fontSize: "0.8rem", background: "var(--color-accent)", color: "#000",
-                    padding: "0.25rem 0.75rem", borderRadius: "6px", fontWeight: 600 }}>
-                  Admin
+                  style={{ fontSize: "0.75rem", color: "var(--color-text-muted)",
+                    padding: "0.25rem 0.5rem", borderRadius: "6px",
+                    border: "1px solid var(--color-border)",
+                    textDecoration: "none" }}>
+                  ⚙ Admin
                 </Link>
               )}
               <button
