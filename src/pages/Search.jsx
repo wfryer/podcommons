@@ -29,33 +29,44 @@ function PodcastPreview({ podcast, preloadedEpisodes = [], onClose }) {
   const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 
   useEffect(() => {
-    if (preloadedEpisodes.length > 0) {
-      setEpisodes(preloadedEpisodes);
-      setLoading(false);
-    } else {
-      fetchEpisodes();
-    }
+    fetchEpisodes();
   }, [podcast.id]);
 
   const fetchEpisodes = async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(query(
+      // Try podcastId first - no orderBy to avoid index requirements
+      const snap1 = await getDocs(query(
         collection(db, "episodes"),
         where("podcastId", "==", podcast.id),
         limit(20)
       ));
-      if (!snap.empty) {
-        const sorted = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => {
-            const dateA = a.publishedAt?.toDate ? a.publishedAt.toDate() : new Date(0);
-            const dateB = b.publishedAt?.toDate ? b.publishedAt.toDate() : new Date(0);
-            return dateB - dateA;
-          });
-        setEpisodes(sorted);
+      
+      let eps = snap1.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Also try podcastTitle match to catch any mismatches
+      if (eps.length < 5) {
+        const snap2 = await getDocs(query(
+          collection(db, "episodes"),
+          where("podcastTitle", "==", podcast.title),
+          limit(20)
+        ));
+        const eps2 = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Merge, deduplicate by id
+        const seen = new Set(eps.map(e => e.id));
+        eps2.forEach(e => { if (!seen.has(e.id)) eps.push(e); });
       }
+
+      // Sort by publishedAt client-side
+      eps.sort((a, b) => {
+        const dateA = a.publishedAt?.toDate ? a.publishedAt.toDate() : new Date(a.publishedAt || 0);
+        const dateB = b.publishedAt?.toDate ? b.publishedAt.toDate() : new Date(b.publishedAt || 0);
+        return dateB - dateA;
+      });
+
+      setEpisodes(eps.slice(0, 20));
     } catch (err) {
-      console.error(err);
+      console.error("fetchEpisodes error:", err);
     }
     setLoading(false);
   };
