@@ -14,10 +14,34 @@ import Search from "./pages/Search";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 
+// Guard: only redirect to complete-profile when we are 100% certain
+// the user is logged in AND has no profile document in Firestore.
+// - user === undefined → auth not yet resolved, show nothing
+// - profile === undefined → profile fetch not yet complete, show nothing
+// - loading === true → either of the above, show nothing
+// - user && profile === null → confirmed no profile, redirect
 function RequireProfile({ children }) {
   const { user, profile, loading } = useAuth();
-  if (loading || user === undefined || profile === undefined) return null;
-  if (user && profile === null) return <Navigate to="/complete-profile" replace />;
+
+  // Still resolving — show a minimal loading state, never redirect
+  if (loading || user === undefined || profile === undefined) {
+    return (
+      <div style={{
+        minHeight: "60vh", display: "flex", alignItems: "center",
+        justifyContent: "center", color: "var(--color-text-muted)"
+      }}>
+        <p style={{ fontSize: "0.85rem" }}>Loading...</p>
+      </div>
+    );
+  }
+
+  // Not logged in — show home page in logged-out state
+  if (!user) return children;
+
+  // Logged in, profile confirmed missing → send to complete profile
+  if (profile === null) return <Navigate to="/complete-profile" replace />;
+
+  // Logged in with profile → show page
   return children;
 }
 

@@ -6,39 +6,51 @@ import { auth, provider, db } from "../firebase";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(undefined); // undefined = not yet resolved
+  const [user, setUser] = useState(undefined);      // undefined = not yet resolved
   const [profile, setProfile] = useState(undefined); // undefined = not yet resolved
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);      // true until BOTH user + profile resolved
 
   useEffect(() => {
-    // Ensure auth persists across browser sessions
+    // Ensure login persists across browser sessions / app restarts
     setPersistence(auth, browserLocalPersistence).catch(console.error);
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Don't set loading=false until profile fetch is also complete
+      setUser(firebaseUser);
+
       if (firebaseUser) {
-        setUser(firebaseUser);
         try {
           const profileDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          setProfile(profileDoc.exists() ? profileDoc.data() : null);
           // null = confirmed no profile exists
+          // object = profile found
+          setProfile(profileDoc.exists() ? { ...profileDoc.data(), uid: firebaseUser.uid } : null);
         } catch (err) {
           console.error("Profile fetch error:", err);
+          // On error, set null so we don't loop forever
           setProfile(null);
         }
       } else {
-        setUser(null);
+        // No user logged in
         setProfile(null);
       }
+
+      // Only mark loading complete AFTER both user and profile are resolved
       setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
   const login = async () => {
     try {
+      // Reset to undefined while logging in so guards wait
+      setProfile(undefined);
+      setLoading(true);
       await signInWithPopup(auth, provider);
+      // onAuthStateChanged will fire and set everything
     } catch (error) {
       console.error("Login error:", error);
+      setLoading(false);
     }
   };
 
@@ -49,13 +61,14 @@ export function AuthProvider({ children }) {
   };
 
   const refreshProfile = async () => {
-    if (auth.currentUser) {
-      try {
-        const profileDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-        if (profileDoc.exists()) setProfile(profileDoc.data());
-      } catch (err) {
-        console.error("Refresh profile error:", err);
+    if (!auth.currentUser) return;
+    try {
+      const profileDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+      if (profileDoc.exists()) {
+        setProfile({ ...profileDoc.data(), uid: auth.currentUser.uid });
       }
+    } catch (err) {
+      console.error("Refresh profile error:", err);
     }
   };
 
