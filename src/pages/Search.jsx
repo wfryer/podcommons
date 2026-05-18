@@ -35,15 +35,43 @@ function PodcastPreview({ podcast, onClose }) {
   const fetchEpisodes = async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(query(
+      // Try by podcastId first
+      let snap = await getDocs(query(
         collection(db, "episodes"),
         where("podcastId", "==", podcast.id),
         orderBy("publishedAt", "desc"),
         limit(20)
       ));
+
+      // Fall back to matching by podcast title
+      if (snap.empty && podcast.title) {
+        snap = await getDocs(query(
+          collection(db, "episodes"),
+          where("podcastTitle", "==", podcast.title),
+          orderBy("publishedAt", "desc"),
+          limit(20)
+        ));
+      }
+
       setEpisodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
-      console.error(err);
+      // If orderBy fails, try without it
+      try {
+        const snap2 = await getDocs(query(
+          collection(db, "episodes"),
+          where("podcastTitle", "==", podcast.title),
+          limit(20)
+        ));
+        const sorted = snap2.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => {
+            const dateA = a.publishedAt?.toDate ? a.publishedAt.toDate() : new Date(0);
+            const dateB = b.publishedAt?.toDate ? b.publishedAt.toDate() : new Date(0);
+            return dateB - dateA;
+          });
+        setEpisodes(sorted);
+      } catch (err2) {
+        console.error(err2);
+      }
     }
     setLoading(false);
   };
