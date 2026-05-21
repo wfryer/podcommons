@@ -114,6 +114,7 @@ export default function Navbar() {
                   {[
                     { label: "👤 My Profile", href: profile ? `/profile/${profile.username}` : "/complete-profile" },
                     { label: "🎧 Listening Queue", href: profile ? `/profile/${profile.username}?tab=queue` : "/" },
+                    { label: "💡 Suggest a Podcast", href: "/suggest" },
                     { label: "⚙️ Settings", href: "/settings" },
                     ...(profile?.role === "admin" ? [{ label: "🛡️ Admin Dashboard", href: "/admin" }] : []),
                   ].map(item => (

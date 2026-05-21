@@ -258,6 +258,24 @@ async function pollFeeds(limitCount = 0, geminiKey = null) {
     lastErrorLog: errorLog.slice(0, 50),
   });
 
+  // Cache site stats after each poll
+  try {
+    const [epSnap, podSnap, userSnap] = await Promise.all([
+      db.collection("episodes").count().get(),
+      db.collection("podcasts").where("visibility", "==", "visible").count().get(),
+      db.collection("users").count().get(),
+    ]);
+    await db.collection("siteSettings").doc("stats").set({
+      episodeCount: epSnap.data().count,
+      podcastCount: podSnap.data().count,
+      userCount: userSnap.data().count,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`Stats cached: ${epSnap.data().count} episodes, ${podSnap.data().count} podcasts, ${userSnap.data().count} users`);
+  } catch (err) {
+    console.error("Stats caching error:", err.message);
+  }
+
   console.log(`Poll complete: ${processed} feeds, ${added} new, ${analyzed} AI-analyzed, ${errors} errors, ${duration}s`);
   return { processed, added, errors, analyzed, duration, errorLog };
 }

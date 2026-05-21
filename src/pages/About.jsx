@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { Link } from "react-router-dom";
 
@@ -27,23 +27,38 @@ export default function About() {
   useEffect(() => { fetchStats(); }, []);
 
   const fetchStats = async () => {
-    const safe = async (fn) => { try { return await fn(); } catch { return null; } };
-    const [podSnap, epSnap, userSnap, likeSnap, pinSnap, mastSnap] = await Promise.all([
-      safe(() => getDocs(collection(db, "podcasts"))),
-      safe(() => getDocs(collection(db, "episodes"))),
-      safe(() => getDocs(collection(db, "users"))),
-      safe(() => getDocs(query(collection(db, "interactions"), where("type", "==", "like")))),
-      safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "pinboard")))),
-      safe(() => getDocs(query(collection(db, "episodes"), where("source", "==", "mastodon")))),
-    ]);
-    setStats({
-      podcasts: podSnap?.size ?? 0,
-      episodes: epSnap?.size ?? 0,
-      users: userSnap?.size ?? 0,
-      likes: likeSnap?.size ?? 0,
-      pinboard: pinSnap?.size ?? 0,
-      mastodon: mastSnap?.size ?? 0,
-    });
+    try {
+      // Use cached stats from siteSettings/stats — updated every 4 hours by RSS poll
+      const cachedSnap = await getDoc(doc(db, "siteSettings", "stats"));
+      if (cachedSnap.exists()) {
+        const data = cachedSnap.data();
+        setStats({
+          podcasts: data.podcastCount ?? 0,
+          episodes: data.episodeCount ?? 0,
+          users: data.userCount ?? 0,
+          likes: data.likeCount ?? 0,
+          pinboard: data.pinboardCount ?? 0,
+          mastodon: data.mastodonCount ?? 0,
+        });
+        return;
+      }
+    } catch (err) {}
+    // Fallback to live counts if cache not available
+    try {
+      const [podSnap, epSnap, userSnap] = await Promise.all([
+        getDocs(collection(db, "podcasts")),
+        getDocs(collection(db, "episodes")),
+        getDocs(collection(db, "users")),
+      ]);
+      setStats({
+        podcasts: podSnap?.size ?? 0,
+        episodes: epSnap?.size ?? 0,
+        users: userSnap?.size ?? 0,
+        likes: 0,
+        pinboard: 0,
+        mastodon: 0,
+      });
+    } catch (err) {}
   };
 
   return (
