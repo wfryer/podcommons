@@ -15,6 +15,9 @@ export default function Footer() {
         <Link to="/search" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem", textDecoration: "none" }}>
           🔍 Search
         </Link>
+        <Link to="/suggest" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem", textDecoration: "none" }}>
+          💡 Suggest
+        </Link>
         <a href="https://github.com/wfryer/podcommons" target="_blank" rel="noopener noreferrer"
           style={{ color: "var(--color-text-muted)", fontSize: "0.82rem", textDecoration: "none" }}>
           💻 GitHub
