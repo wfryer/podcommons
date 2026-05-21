@@ -65,7 +65,7 @@ export default function Home() {
         } else if (activeTab === "community") {
           eps = eps.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
         } else if (activeTab === "adminpicks") {
-          eps = eps.filter(e => e.isFirstParty === true || e.featuredByAdmin === true);
+          eps = eps.filter(e => e.featuredByAdmin === true);
         }
 
       } else if (activeTab === "latest") {
@@ -74,12 +74,14 @@ export default function Home() {
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
       } else if (activeTab === "adminpicks") {
-        const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(200)));
+        const snap = await getDocs(query(
+          collection(db, "episodes"),
+          where("featuredByAdmin", "==", true),
+          orderBy("publishedAt", "desc"),
+          limit(50)
+        ));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        eps = eps.filter(e =>
-          e.visibility !== "hidden" && e.visibility !== "removed" &&
-          (e.isFirstParty === true || e.featuredByAdmin === true)
-        );
+        eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
       } else if (activeTab === "community") {
         const snap = await getDocs(query(collection(db, "episodes"), orderBy("likeCount", "desc"), limit(30)));
@@ -172,7 +174,7 @@ export default function Home() {
           <p style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🎙️</p>
           <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>No episodes here yet</p>
           <p style={{ fontSize: "0.85rem" }}>
-            {activeTab === "adminpicks" ? "Episodes from your five shows will appear here."
+            {activeTab === "adminpicks" ? "Feature episodes using the ⭐ button on any episode card or episode page."
               : activeTab === "community" ? "Like some episodes to get the community feed going!"
               : selectedTopic
               ? `No episodes tagged "${selectedTopic}" yet — AI tagging is still running overnight!`
