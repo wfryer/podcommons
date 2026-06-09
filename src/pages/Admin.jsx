@@ -399,7 +399,7 @@ function UserManagement() {
                   → Trusted
                 </button>
               )}
-              {user.role !== "admin" && (
+              {user.role !== "admin" && user.id !== user?.uid && (
                 <button onClick={() => setRole(user.id, "admin")}
                   style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", borderRadius: "6px",
                     background: "rgba(245,158,11,0.1)", border: "1px solid var(--color-accent)",
@@ -407,7 +407,7 @@ function UserManagement() {
                   → Admin
                 </button>
               )}
-              {user.role !== "new" && (
+              {user.role !== "new" && user.role !== "admin" && (
                 <button onClick={() => setRole(user.id, "new")}
                   style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", borderRadius: "6px",
                     background: "rgba(107,114,128,0.1)", border: "1px solid #6b7280",
