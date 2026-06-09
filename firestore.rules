@@ -1,18 +1,100 @@
-rules_version='2'
-
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 5, 12);
+
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    function isLoggedIn() {
+      return request.auth != null;
+    }
+
+    function isTrusted() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["trusted", "admin"];
+    }
+
+    match /episodes/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /podcasts/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Users: public fields readable by anyone, private fields only by owner or admin
+    match /users/{userId} {
+      // Anyone can read public profile fields
+      allow read: if resource.data.keys().hasAny([
+        'username', 'bio', 'gravatarHash', 'socialLink',
+        'role', 'createdAt', 'communityGroups'
+      ]);
+      // Only the user themselves or an admin can read/write the full document
+      allow read, write: if request.auth != null &&
+        (request.auth.uid == userId || isAdmin());
+    }
+
+    match /interactions/{id} {
+      allow read: if
+        resource.data.status == "approved" ||
+        resource.data.type == "like" ||
+        (request.auth != null && request.auth.uid == resource.data.userId);
+      allow create: if isLoggedIn();
+      allow delete: if isLoggedIn() && request.auth.uid == resource.data.userId;
+      allow update: if isAdmin();
+    }
+
+    // Moderation queue: members can create, only admins can read/write
+    match /moderationQueue/{id} {
+      allow create: if isLoggedIn();
+      allow read, write: if isAdmin();
+    }
+
+    // Flags: members can create, only admins can read/update
+    match /flags/{id} {
+      allow create: if isLoggedIn();
+      allow read, update: if isAdmin();
+    }
+
+    // Suggestions: members can create and read their own, admins can read/update all
+    match /podcastSuggestions/{id} {
+      allow create: if isLoggedIn();
+      allow read: if isLoggedIn() &&
+        (request.auth.uid == resource.data.userId || isAdmin());
+      allow update: if isAdmin();
+    }
+
+    match /listeningHistory/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /siteSettings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /inviteCodes/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /blockedFeeds/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /communityGroups/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Stats cache used by About page
+    match /stats/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }
