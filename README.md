@@ -131,12 +131,10 @@ Update `src/firebase.js` with your `firebaseConfig`.
 
 ```bash
 cp env.example .env
-# Edit .env and add your VITE_ADMIN_TOKEN
 ```
 
 ### 4. Set Firebase secrets
 ```bash
-firebase functions:secrets:set ADMIN_TOKEN
 firebase functions:secrets:set GEMINI_API_KEY
 ```
 
