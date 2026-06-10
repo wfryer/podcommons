@@ -1,44 +1,61 @@
 // PodCommons Algorithm Scorer v3
-// Uses AI tasteScore + recency + community + mode presets
+// Mode-driven discovery with dramatic preset differences
 
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 let cachedTasteProfile = null;
 
-// ─── Mode Presets ─────────────────────────────────────────────────────────────
+// ─── Discovery Modes ──────────────────────────────────────────────────────────
 export const DISCOVER_MODES = [
   {
-    id: "curators_taste",
-    label: "Curator's Taste",
-    icon: "🎯",
-    desc: "Ranked by the curator's AI taste profile — the episodes most likely to resonate",
-    sliders: { discoveryVsFamiliar: 60, recentVsTimeless: 55, myTasteVsCommunity: 90 },
-  },
-  {
-    id: "surprise_me",
-    label: "Surprise Me",
-    icon: "🎲",
-    desc: "Maximum discovery — unfamiliar shows, unexpected topics, outside your usual bubble",
-    sliders: { discoveryVsFamiliar: 95, recentVsTimeless: 50, myTasteVsCommunity: 30 },
-  },
-  {
-    id: "community_pulse",
-    label: "Community Pulse",
-    icon: "🔥",
-    desc: "What the PodCommons community is liking and talking about most",
-    sliders: { discoveryVsFamiliar: 50, recentVsTimeless: 70, myTasteVsCommunity: 5 },
-  },
-  {
-    id: "latest",
-    label: "Latest",
+    id: "fresh",
+    label: "Fresh",
     icon: "🕐",
-    desc: "Pure chronological — newest episodes first, no algorithm",
-    sliders: { discoveryVsFamiliar: 50, recentVsTimeless: 100, myTasteVsCommunity: 50 },
+    desc: "Newest episodes first — no algorithm, just what just dropped",
+    showSliders: false,
+  },
+  {
+    id: "recommended",
+    label: "Recommended",
+    icon: "🎯",
+    desc: "Ranked by the curator's taste profile and AI signals — the episodes most likely to resonate",
+    showSliders: true,
+    sliders: { discoveryVsFamiliar: 60, recentVsTimeless: 55, myTasteVsCommunity: 92 },
+  },
+  {
+    id: "buzzing",
+    label: "Buzzing",
+    icon: "🔥",
+    desc: "What the PodCommons community is liking and talking about most right now",
+    showSliders: false,
+    sliders: { discoveryVsFamiliar: 50, recentVsTimeless: 70, myTasteVsCommunity: 4 },
+  },
+  {
+    id: "wander",
+    label: "Wander",
+    icon: "🧭",
+    desc: "Off the beaten path — unfamiliar shows, unexpected topics, outside your usual bubble",
+    showSliders: false,
+    sliders: { discoveryVsFamiliar: 98, recentVsTimeless: 50, myTasteVsCommunity: 8 },
+  },
+  {
+    id: "picks",
+    label: "Picks",
+    icon: "⭐",
+    desc: "Hand-picked episodes featured by the curator",
+    showSliders: false,
+  },
+  {
+    id: "talking",
+    label: "Talking",
+    icon: "💬",
+    desc: "Episodes with active community comments — join the conversation",
+    showSliders: false,
   },
 ];
 
-export const DEFAULT_MODE = "curators_taste";
+export const DEFAULT_MODE = "fresh";
 
 export async function buildTasteProfile(userId = "admin") {
   if (cachedTasteProfile) return cachedTasteProfile;
@@ -62,19 +79,17 @@ export async function buildTasteProfile(userId = "admin") {
     cachedTasteProfile = { showScores, totalListens: history.length };
     return cachedTasteProfile;
   } catch (err) {
-    console.error("Could not build taste profile:", err);
     return { showScores: {}, totalListens: 0 };
   }
 }
 
-export function scoreEpisode(episode, tasteProfile, sliders) {
+export function scoreEpisode(episode, tasteProfile, sliders, modeId) {
   const {
-    discoveryVsFamiliar = 70,
-    recentVsTimeless = 60,
-    myTasteVsCommunity = 50,
+    discoveryVsFamiliar = 60,
+    recentVsTimeless = 55,
+    myTasteVsCommunity = 92,
   } = sliders || {};
 
-  // Normalize sliders 0-1
   const discoveryWeight = discoveryVsFamiliar / 100;
   const recencyWeight = recentVsTimeless / 100;
   const myTasteWeight = myTasteVsCommunity / 100;
@@ -83,16 +98,26 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
   const rawTaste = episode.tasteScore ?? 0.5;
   const aiTasteScore = Math.min(1, Math.max(0, (rawTaste - 0.3) / 0.5));
 
-  // 2. Listening history show match
+  // 2. For Wander mode — INVERT the taste score to surface unexpected content
+  const effectiveTasteScore = modeId === "wander"
+    ? 1 - aiTasteScore
+    : aiTasteScore;
+
+  // 3. Listening history show match
   const podTitle = (episode.podcastTitle || "").toLowerCase();
   const showMatchScore = tasteProfile.showScores[podTitle] || 0;
 
-  // 3. Personal signal — blend AI taste + history
-  const personalSignal =
-    discoveryWeight * aiTasteScore +
-    (1 - discoveryWeight) * Math.max(aiTasteScore * 0.5, showMatchScore);
+  // 4. For Wander — penalize familiar shows heavily
+  const effectiveShowMatch = modeId === "wander"
+    ? Math.max(0, 0.2 - showMatchScore)
+    : showMatchScore;
 
-  // 4. Recency
+  // 5. Personal signal
+  const personalSignal =
+    discoveryWeight * effectiveTasteScore +
+    (1 - discoveryWeight) * Math.max(effectiveTasteScore * 0.5, effectiveShowMatch);
+
+  // 6. Recency
   let recencyScore = 0;
   if (episode.publishedAt) {
     const date = episode.publishedAt.toDate
@@ -104,22 +129,21 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
     recencyScore = recencyWeight * recentDecay + (1 - recencyWeight) * timelessDecay;
   }
 
-  // 5. Community engagement
+  // 7. Community engagement
   const likes = episode.likeCount || 0;
   const favs = episode.favoriteCount || 0;
   const comments = episode.commentCount || 0;
   const communityScore = Math.min(1, (likes * 3 + favs * 4 + comments * 5) / 15);
 
-  // 6. My taste vs community slider
+  // 8. Blend personal vs community
   const feedSignal =
     myTasteWeight * personalSignal +
     (1 - myTasteWeight) * communityScore;
 
-  // 7. Boosts
+  // 9. Boosts
   const firstPartyBoost = episode.isFirstParty ? 0.15 : 0;
   const featuredBoost = episode.featuredByAdmin ? 0.30 : 0;
 
-  // Final score
   const finalScore = Math.min(1,
     feedSignal * 0.55 +
     recencyScore * 0.30 +
@@ -139,11 +163,11 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
   };
 }
 
-export async function rankEpisodes(episodes, sliders, userId = "admin") {
+export async function rankEpisodes(episodes, sliders, userId = "admin", modeId = "recommended") {
   const tasteProfile = await buildTasteProfile(userId);
   return episodes
     .map(ep => {
-      const { score, signals } = scoreEpisode(ep, tasteProfile, sliders);
+      const { score, signals } = scoreEpisode(ep, tasteProfile, sliders, modeId);
       return { ...ep, _computedScore: score, recommendationSignals: signals };
     })
     .sort((a, b) => b._computedScore - a._computedScore);
