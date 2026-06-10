@@ -178,29 +178,31 @@ export default function Home() {
           </button>
         ))}
 
-        {/* Advanced toggle — only for Recommended */}
-        {mode === "recommended" && (
-          <button onClick={() => setShowSliders(!showSliders)}
-            style={{
-              fontSize: "0.75rem", padding: "0.4rem 0.75rem", borderRadius: "8px",
-              border: "1px solid var(--color-border)",
-              color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
-              background: "none", cursor: "pointer",
-            }}>
-            ⚙️ Fine-tune {showSliders ? "▲" : "▼"}
-          </button>
-        )}
-
-        {/* Lucky — always last */}
+        {/* Lucky — sits with the other pills */}
         <button onClick={handleLucky} title="Take me to a random episode!"
           style={{
-            marginLeft: "auto", fontSize: "0.82rem", padding: "0.4rem 0.9rem",
+            fontSize: "0.82rem", padding: "0.4rem 0.9rem",
             borderRadius: "20px", border: "1px solid var(--color-border)",
             background: "none", cursor: "pointer", color: "var(--color-text-muted)",
           }}>
           🎲 Lucky
         </button>
       </div>
+
+      {/* Advanced toggle — only for Recommended, on its own line */}
+      {mode === "recommended" && (
+        <div style={{ marginBottom: "0.5rem" }}>
+          <button onClick={() => setShowSliders(!showSliders)}
+            style={{
+              fontSize: "0.75rem", padding: "0.3rem 0.75rem", borderRadius: "8px",
+              border: "1px solid var(--color-border)",
+              color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
+              background: "none", cursor: "pointer",
+            }}>
+            ⚙️ Fine-tune Recommended {showSliders ? "▲" : "▼"}
+          </button>
+        </div>
+      )}
 
       {/* Topic Filter */}
       <TopicFilter selected={selectedTopic} onSelect={setSelectedTopic} />
