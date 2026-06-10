@@ -4,11 +4,19 @@ const { onRequest } = require("firebase-functions/v2/https");
 // Lazy initialization - don't init at module load time
 let _db = null;
 let _FieldValue = null;
+let _admin = null;
+
+function getAdmin() {
+  if (!_admin) {
+    _admin = require("firebase-admin");
+    if (!_admin.apps.length) _admin.initializeApp();
+  }
+  return _admin;
+}
 
 function getDb() {
+  const admin = getAdmin();
   if (!_db) {
-    const admin = require("firebase-admin");
-    if (!admin.apps.length) admin.initializeApp();
     _db = admin.firestore();
     _FieldValue = admin.firestore.FieldValue;
   }
@@ -285,7 +293,7 @@ exports.scheduledRSSPoll = onSchedule({
   schedule: "every 4 hours",
   timeoutSeconds: 540,
   memory: "512MiB",
-  secrets: ["ADMIN_TOKEN", "GEMINI_API_KEY"],
+  secrets: ["GEMINI_API_KEY"],
 }, async () => {
   const key = process.env.GEMINI_API_KEY;
   console.log(`Gemini key: ${key ? key.slice(0, 8) + "..." : "NOT FOUND"}`);
@@ -296,14 +304,29 @@ exports.scheduledRSSPoll = onSchedule({
 exports.manualRSSPoll = onRequest({
   timeoutSeconds: 540,
   memory: "512MiB",
-  secrets: ["ADMIN_TOKEN", "GEMINI_API_KEY"],
+  secrets: ["GEMINI_API_KEY"],
   cors: true,
 }, async (req, res) => {
-  const token = req.query.token || req.headers["x-admin-token"];
-  const secret = process.env.ADMIN_TOKEN;
+  // Verify Firebase Auth ID token and check admin role
+  const authHeader = req.headers["authorization"] || "";
+  const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-  if (!token || token !== secret) {
-    res.status(403).json({ error: "Unauthorized" });
+  if (!idToken) {
+    res.status(403).json({ error: "Unauthorized: no token" });
+    return;
+  }
+
+  try {
+    const admin = getAdmin();
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const userDoc = await admin.firestore()
+      .collection("users").doc(decoded.uid).get();
+    if (!userDoc.exists || userDoc.data().role !== "admin") {
+      res.status(403).json({ error: "Unauthorized: not admin" });
+      return;
+    }
+  } catch (err) {
+    res.status(403).json({ error: "Unauthorized: invalid token" });
     return;
   }
 

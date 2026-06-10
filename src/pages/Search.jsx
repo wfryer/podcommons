@@ -26,7 +26,6 @@ function PodcastPreview({ podcast, preloadedEpisodes = [], onClose }) {
   const [loading, setLoading] = useState(true);
   const [suggesting, setSuggesting] = useState(null);
   const [suggested, setSuggested] = useState({});
-  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 
   useEffect(() => {
     fetchEpisodes();

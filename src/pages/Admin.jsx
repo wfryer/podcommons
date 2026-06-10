@@ -5,15 +5,13 @@ import {
   collection, getDocs, query, where, orderBy, limit,
   doc, updateDoc, deleteDoc, getDoc, addDoc, setDoc, Timestamp
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 
 // ─── Poll Status ────────────────────────────────────────────────────────────
 function PollStatus({ onRefresh }) {
   const [status, setStatus] = useState(null);
   const [polling, setPolling] = useState(false);
   const [result, setResult] = useState(null);
-  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
-
   useEffect(() => { fetchStatus(); }, []);
 
   const fetchStatus = async () => {
@@ -24,15 +22,15 @@ function PollStatus({ onRefresh }) {
   };
 
   const handleRefresh = async () => {
-    if (!ADMIN_TOKEN) {
-      alert("ADMIN_TOKEN not configured. Add VITE_ADMIN_TOKEN to your .env file.");
-      return;
-    }
     setPolling(true);
     setResult(null);
     try {
-      const url = `https://manualrsspoll-wktvb3f5za-uc.a.run.app?token=${ADMIN_TOKEN}&limit=50`;
-      const res = await fetch(url);
+      // Get the current user's Firebase Auth ID token
+      const idToken = await auth.currentUser.getIdToken();
+      const url = `https://manualrsspoll-wktvb3f5za-uc.a.run.app?limit=50`;
+      const res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${idToken}` }
+      });
       const data = await res.json();
       setResult(data);
       fetchStatus();
@@ -399,7 +397,7 @@ function UserManagement() {
                   → Trusted
                 </button>
               )}
-              {user.role !== "admin" && user.id !== user?.uid && (
+              {user.role !== "admin" && (
                 <button onClick={() => setRole(user.id, "admin")}
                   style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", borderRadius: "6px",
                     background: "rgba(245,158,11,0.1)", border: "1px solid var(--color-accent)",
@@ -407,7 +405,7 @@ function UserManagement() {
                   → Admin
                 </button>
               )}
-              {user.role !== "new" && user.role !== "admin" && (
+              {user.role !== "new" && (
                 <button onClick={() => setRole(user.id, "new")}
                   style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", borderRadius: "6px",
                     background: "rgba(107,114,128,0.1)", border: "1px solid #6b7280",
