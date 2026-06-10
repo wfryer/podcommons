@@ -427,6 +427,10 @@ function FeedManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [expandedFeed, setExpandedFeed] = useState(null);
+  const [feedEpisodeCounts, setFeedEpisodeCounts] = useState({});
+  const [testingUrl, setTestingUrl] = useState(null);
+  const [urlTestResults, setUrlTestResults] = useState({});
 
   useEffect(() => { fetchFeeds(); }, []);
 
@@ -437,6 +441,45 @@ function FeedManagement() {
       setFeeds(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) { console.error(err); }
     setLoading(false);
+  };
+
+  const toggleExpand = async (feedId) => {
+    if (expandedFeed === feedId) {
+      setExpandedFeed(null);
+      return;
+    }
+    setExpandedFeed(feedId);
+    // Fetch episode count for this feed if not already loaded
+    if (feedEpisodeCounts[feedId] === undefined) {
+      try {
+        const snap = await getDocs(query(
+          collection(db, "episodes"),
+          where("podcastId", "==", feedId),
+          limit(500)
+        ));
+        setFeedEpisodeCounts(prev => ({ ...prev, [feedId]: snap.size }));
+      } catch (err) {
+        setFeedEpisodeCounts(prev => ({ ...prev, [feedId]: "?" }));
+      }
+    }
+  };
+
+  const testFeedUrl = async (feed) => {
+    setTestingUrl(feed.id);
+    try {
+      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(feed.feedUrl)}`);
+      const data = await res.json();
+      if (data.contents && data.contents.includes("<rss") || data.contents?.includes("<feed")) {
+        setUrlTestResults(prev => ({ ...prev, [feed.id]: { ok: true, msg: "✅ Feed URL is live and returning RSS" } }));
+      } else if (data.status?.http_code === 404) {
+        setUrlTestResults(prev => ({ ...prev, [feed.id]: { ok: false, msg: "❌ 404 — Feed URL not found" } }));
+      } else {
+        setUrlTestResults(prev => ({ ...prev, [feed.id]: { ok: false, msg: `⚠️ Unexpected response (HTTP ${data.status?.http_code})` } }));
+      }
+    } catch (err) {
+      setUrlTestResults(prev => ({ ...prev, [feed.id]: { ok: false, msg: "❌ Could not reach feed URL" } }));
+    }
+    setTestingUrl(null);
   };
 
   const setVisibility = async (feedId, visibility) => {
@@ -486,47 +529,111 @@ function FeedManagement() {
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {filtered.map(feed => (
           <div key={feed.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
-            borderRadius: "8px", padding: "0.75rem", display: "flex",
-            justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
-              {feed.artworkUrl && (
-                <img src={feed.artworkUrl} alt="" style={{ width: 36, height: 36, borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
-              )}
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontWeight: 600, fontSize: "0.85rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {feed.isFirstParty && "🎙️ "}{feed.title}
-                </p>
-                <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
-                  <span style={{ color: visibilityColor[feed.visibility] || "#6b7280" }}>● {feed.visibility || "visible"}</span>
-                  {feed.lastPolledAt && ` · polled ${feed.lastPolledAt.toDate?.().toLocaleDateString()}`}
-                </p>
+            borderRadius: "8px", overflow: "hidden" }}>
+            {/* Main row */}
+            <div style={{ padding: "0.75rem", display: "flex",
+              justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+              <div onClick={() => toggleExpand(feed.id)}
+                style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0, cursor: "pointer" }}>
+                {feed.artworkUrl && (
+                  <img src={feed.artworkUrl} alt="" style={{ width: 36, height: 36, borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: "0.85rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {feed.isFirstParty && "🎙️ "}{feed.title}
+                    <span style={{ marginLeft: "0.4rem", color: "var(--color-text-muted)", fontSize: "0.7rem" }}>
+                      {expandedFeed === feed.id ? "▲" : "▼"}
+                    </span>
+                  </p>
+                  <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
+                    <span style={{ color: visibilityColor[feed.visibility] || "#6b7280" }}>● {feed.visibility || "visible"}</span>
+                    {feed.lastPolledAt && ` · polled ${feed.lastPolledAt.toDate?.().toLocaleDateString()}`}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+                {feed.visibility !== "visible" && (
+                  <button onClick={() => setVisibility(feed.id, "visible")}
+                    style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
+                      background: "rgba(74,222,128,0.1)", border: "1px solid #4ade80", color: "#4ade80", cursor: "pointer" }}>
+                    Show
+                  </button>
+                )}
+                {feed.visibility !== "hidden" && (
+                  <button onClick={() => setVisibility(feed.id, "hidden")}
+                    style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
+                      background: "rgba(245,158,11,0.1)", border: "1px solid var(--color-accent)",
+                      color: "var(--color-accent)", cursor: "pointer" }}>
+                    Hide
+                  </button>
+                )}
+                {!feed.isFirstParty && (
+                  <button onClick={() => deleteFeed(feed)}
+                    style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
+                      background: "rgba(248,113,113,0.1)", border: "1px solid #f87171",
+                      color: "#f87171", cursor: "pointer" }}>
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
-            <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
-              {feed.visibility !== "visible" && (
-                <button onClick={() => setVisibility(feed.id, "visible")}
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
-                    background: "rgba(74,222,128,0.1)", border: "1px solid #4ade80", color: "#4ade80", cursor: "pointer" }}>
-                  Show
-                </button>
-              )}
-              {feed.visibility !== "hidden" && (
-                <button onClick={() => setVisibility(feed.id, "hidden")}
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
-                    background: "rgba(245,158,11,0.1)", border: "1px solid var(--color-accent)",
-                    color: "var(--color-accent)", cursor: "pointer" }}>
-                  Hide
-                </button>
-              )}
-              {!feed.isFirstParty && (
-                <button onClick={() => deleteFeed(feed)}
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", borderRadius: "6px",
-                    background: "rgba(248,113,113,0.1)", border: "1px solid #f87171",
-                    color: "#f87171", cursor: "pointer" }}>
-                  Delete
-                </button>
-              )}
-            </div>
+
+            {/* Expanded detail panel */}
+            {expandedFeed === feed.id && (
+              <div style={{ padding: "0.75rem 1rem 1rem", borderTop: "1px solid var(--color-border)",
+                background: "rgba(255,255,255,0.03)", fontSize: "0.78rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+
+                {/* RSS URL */}
+                <div>
+                  <span style={{ color: "var(--color-text-muted)" }}>RSS Feed URL: </span>
+                  <a href={feed.feedUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ color: "var(--color-accent)", wordBreak: "break-all" }}>
+                    {feed.feedUrl}
+                  </a>
+                </div>
+
+                {/* Episode count */}
+                <div>
+                  <span style={{ color: "var(--color-text-muted)" }}>Episodes in database: </span>
+                  <strong>{feedEpisodeCounts[feed.id] === undefined ? "Loading..." : feedEpisodeCounts[feed.id]}</strong>
+                </div>
+
+                {/* Last polled */}
+                {feed.lastPolledAt && (
+                  <div>
+                    <span style={{ color: "var(--color-text-muted)" }}>Last polled: </span>
+                    <strong>{feed.lastPolledAt.toDate?.().toLocaleString()}</strong>
+                  </div>
+                )}
+
+                {/* Podcast homepage */}
+                {feed.link && (
+                  <div>
+                    <span style={{ color: "var(--color-text-muted)" }}>Podcast website: </span>
+                    <a href={feed.link} target="_blank" rel="noopener noreferrer"
+                      style={{ color: "var(--color-accent)" }}>
+                      {feed.link}
+                    </a>
+                  </div>
+                )}
+
+                {/* Test URL button and result */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button onClick={() => testFeedUrl(feed)}
+                    disabled={testingUrl === feed.id}
+                    style={{ fontSize: "0.72rem", padding: "0.25rem 0.6rem", borderRadius: "6px",
+                      background: "rgba(99,102,241,0.1)", border: "1px solid #6366f1",
+                      color: "#6366f1", cursor: "pointer" }}>
+                    {testingUrl === feed.id ? "Testing..." : "🔍 Test Feed URL"}
+                  </button>
+                  {urlTestResults[feed.id] && (
+                    <span style={{ color: urlTestResults[feed.id].ok ? "#4ade80" : "#f87171" }}>
+                      {urlTestResults[feed.id].msg}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
