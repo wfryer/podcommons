@@ -1,10 +1,44 @@
-// PodCommons Algorithm Scorer v2
-// Uses AI tasteScore + recency + community + sliders
+// PodCommons Algorithm Scorer v3
+// Uses AI tasteScore + recency + community + mode presets
 
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 let cachedTasteProfile = null;
+
+// ─── Mode Presets ─────────────────────────────────────────────────────────────
+export const DISCOVER_MODES = [
+  {
+    id: "curators_taste",
+    label: "Curator's Taste",
+    icon: "🎯",
+    desc: "Ranked by the curator's AI taste profile — the episodes most likely to resonate",
+    sliders: { discoveryVsFamiliar: 60, recentVsTimeless: 55, myTasteVsCommunity: 90 },
+  },
+  {
+    id: "surprise_me",
+    label: "Surprise Me",
+    icon: "🎲",
+    desc: "Maximum discovery — unfamiliar shows, unexpected topics, outside your usual bubble",
+    sliders: { discoveryVsFamiliar: 95, recentVsTimeless: 50, myTasteVsCommunity: 30 },
+  },
+  {
+    id: "community_pulse",
+    label: "Community Pulse",
+    icon: "🔥",
+    desc: "What the PodCommons community is liking and talking about most",
+    sliders: { discoveryVsFamiliar: 50, recentVsTimeless: 70, myTasteVsCommunity: 5 },
+  },
+  {
+    id: "latest",
+    label: "Latest",
+    icon: "🕐",
+    desc: "Pure chronological — newest episodes first, no algorithm",
+    sliders: { discoveryVsFamiliar: 50, recentVsTimeless: 100, myTasteVsCommunity: 50 },
+  },
+];
+
+export const DEFAULT_MODE = "curators_taste";
 
 export async function buildTasteProfile(userId = "admin") {
   if (cachedTasteProfile) return cachedTasteProfile;
@@ -46,7 +80,6 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
   const myTasteWeight = myTasteVsCommunity / 100;
 
   // 1. AI taste score — stretch to full 0-1 range
-  // Raw Gemini scores cluster around 0.4-0.7, so we stretch them
   const rawTaste = episode.tasteScore ?? 0.5;
   const aiTasteScore = Math.min(1, Math.max(0, (rawTaste - 0.3) / 0.5));
 
@@ -55,27 +88,23 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
   const showMatchScore = tasteProfile.showScores[podTitle] || 0;
 
   // 3. Personal signal — blend AI taste + history
-  // Discovery mode: AI taste dominates (finds new relevant shows)
-  // Familiar mode: history match dominates (known shows)
   const personalSignal =
     discoveryWeight * aiTasteScore +
     (1 - discoveryWeight) * Math.max(aiTasteScore * 0.5, showMatchScore);
 
-  // 4. Recency — faster decay for more dramatic slider effect
-  // Recent slider: 14-day half-life
-  // Timeless slider: 180-day half-life
+  // 4. Recency
   let recencyScore = 0;
   if (episode.publishedAt) {
     const date = episode.publishedAt.toDate
       ? episode.publishedAt.toDate()
       : new Date(episode.publishedAt);
     const daysOld = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
-    const recentDecay = Math.max(0, 1 - (daysOld / 14));   // aggressive
-    const timelessDecay = Math.max(0, 1 - (daysOld / 180)); // gentle
+    const recentDecay = Math.max(0, 1 - (daysOld / 14));
+    const timelessDecay = Math.max(0, 1 - (daysOld / 180));
     recencyScore = recencyWeight * recentDecay + (1 - recencyWeight) * timelessDecay;
   }
 
-  // 5. Community engagement — more sensitive scaling
+  // 5. Community engagement
   const likes = episode.likeCount || 0;
   const favs = episode.favoriteCount || 0;
   const comments = episode.commentCount || 0;
@@ -90,7 +119,7 @@ export function scoreEpisode(episode, tasteProfile, sliders) {
   const firstPartyBoost = episode.isFirstParty ? 0.15 : 0;
   const featuredBoost = episode.featuredByAdmin ? 0.30 : 0;
 
-  // Final score — weighted combination
+  // Final score
   const finalScore = Math.min(1,
     feedSignal * 0.55 +
     recencyScore * 0.30 +

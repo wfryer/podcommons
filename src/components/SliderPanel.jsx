@@ -14,14 +14,10 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Load saved settings on mount
-  useEffect(() => {
-    loadSettings();
-  }, [user]);
+  useEffect(() => { loadSettings(); }, [user]);
 
   const loadSettings = async () => {
     if (user) {
-      // Load from Firestore for logged-in users
       try {
         const snap = await getDoc(doc(db, "users", user.uid));
         if (snap.exists() && snap.data().sliderSettings) {
@@ -29,7 +25,6 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
         }
       } catch (err) { /* use defaults */ }
     } else {
-      // Load from localStorage for logged-out users
       try {
         const saved = localStorage.getItem("podcommons_sliders");
         if (saved) setSliders({ ...DEFAULT_SLIDERS, ...JSON.parse(saved) });
@@ -41,7 +36,6 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
 
   const handleApply = async () => {
     setSaving(true);
-    // Save settings
     if (user) {
       try {
         await updateDoc(doc(db, "users", user.uid), { sliderSettings: sliders });
@@ -52,10 +46,7 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
     setSaving(false);
     setSaved(true);
     onApply();
-    setTimeout(() => {
-      setSaved(false);
-      onClose();
-    }, 800);
+    setTimeout(() => { setSaved(false); onClose(); }, 800);
   };
 
   const sliderConfig = [
@@ -63,8 +54,8 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
       desc: "New shows vs. shows already indexed" },
     { key: "recentVsTimeless", leftLabel: "Recent", rightLabel: "Timeless",
       desc: "Newest episodes vs. highly-rated older ones" },
-    { key: "myTasteVsCommunity", leftLabel: "Wes' Tastes", rightLabel: "Community",
-      desc: "Wes' signals vs. what the community likes" },
+    { key: "myTasteVsCommunity", leftLabel: "Curator", rightLabel: "Community",
+      desc: "Curator's signals vs. what the community likes" },
   ];
 
   const isDiscover = activeTab === "discover";
@@ -75,15 +66,14 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
       borderRadius: "12px", padding: "1.25rem", marginBottom: "1rem"
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>⚙️ Feed Settings</p>
+        <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>⚙️ Advanced Feed Settings</p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <a href="/about#algorithm" style={{ fontSize: "0.75rem", color: "var(--color-accent)" }}>
             How does this work? →
           </a>
           <button onClick={onClose}
             style={{ background: "none", border: "none", cursor: "pointer",
-              fontSize: "1.1rem", color: "var(--color-text-muted)", padding: "0 0.25rem",
-              lineHeight: 1 }}>
+              fontSize: "1.1rem", color: "var(--color-text-muted)", padding: "0 0.25rem", lineHeight: 1 }}>
             ✕
           </button>
         </div>
@@ -108,8 +98,7 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
               {s.rightLabel}
             </span>
           </div>
-          <input
-            type="range" min={0} max={100}
+          <input type="range" min={0} max={100}
             value={sliders[s.key]}
             onChange={e => update(s.key, e.target.value)}
             disabled={!isDiscover}
@@ -124,8 +113,7 @@ export default function SliderPanel({ sliders, setSliders, activeTab, onApply, o
           {user ? " Settings saved to your profile." : " Sign in to save settings."}
         </p>
         {isDiscover && (
-          <button onClick={handleApply} disabled={saving}
-            className="btn-primary"
+          <button onClick={handleApply} disabled={saving} className="btn-primary"
             style={{ fontSize: "0.8rem", padding: "0.4rem 1rem", whiteSpace: "nowrap",
               minWidth: 80, opacity: saving ? 0.7 : 1 }}>
             {saved ? "✓ Saved!" : saving ? "Saving..." : "Apply →"}

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, query, orderBy, limit, getDocs, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { rankEpisodes } from "../utils/algorithmScorer";
+import { rankEpisodes, DISCOVER_MODES, DEFAULT_MODE } from "../utils/algorithmScorer";
 import EpisodeCard from "../components/EpisodeCard";
 import WesShowsShelf from "../components/WesShowsShelf";
 import TopicFilter from "../components/TopicFilter";
@@ -17,7 +17,7 @@ const TABS = [
 ];
 
 const TAB_DESCRIPTIONS = {
-  discover: "Ranked by Wes' listening history, topic signals, recency, and community engagement",
+  discover: null, // dynamic — set by active mode
   latest: "Chronological feed — no algorithm, just the newest episodes first",
   adminpicks: "Episodes from Wes's own shows and admin-featured picks",
   community: "Most liked and favorited episodes by the PodCommons community",
@@ -32,13 +32,12 @@ export default function Home() {
   const [shelfVisible, setShelfVisible] = useState(true);
   const [showSliders, setShowSliders] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState(null);
-  const [sliders, setSliders] = useState({
-    discoveryVsFamiliar: 70,
-    recentVsTimeless: 60,
-    myTasteVsCommunity: 50,
-  });
+  const [discoverMode, setDiscoverMode] = useState(DEFAULT_MODE);
+  const [sliders, setSliders] = useState(
+    DISCOVER_MODES.find(m => m.id === DEFAULT_MODE).sliders
+  );
 
-  useEffect(() => { fetchEpisodes(); }, [activeTab, selectedTopic]);
+  useEffect(() => { fetchEpisodes(); }, [activeTab, selectedTopic, discoverMode]);
   useEffect(() => {
     if (activeTab === "discover" && episodes.length > 0) fetchEpisodes();
   }, [sliders]);
@@ -89,12 +88,26 @@ export default function Home() {
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
 
       } else {
-        // Discover — real personalized ranking
+        // Discover — mode-driven ranking
         const snap = await getDocs(query(collection(db, "episodes"), orderBy("publishedAt", "desc"), limit(200)));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
-        eps = await rankEpisodes(eps, sliders, user?.uid || "admin");
-        eps = eps.slice(0, 30);
+        if (discoverMode === "latest") {
+          // Pure chronological — already sorted by publishedAt desc
+          eps = eps.slice(0, 30);
+        } else if (discoverMode === "community_pulse") {
+          // Sort purely by community engagement
+          eps = eps.sort((a, b) => {
+            const scoreA = (a.likeCount || 0) * 3 + (a.favoriteCount || 0) * 4 + (a.commentCount || 0) * 5;
+            const scoreB = (b.likeCount || 0) * 3 + (b.favoriteCount || 0) * 4 + (b.commentCount || 0) * 5;
+            return scoreB - scoreA;
+          }).slice(0, 30);
+        } else {
+          // curators_taste and surprise_me use the scorer with mode-specific sliders
+          const modeSliders = DISCOVER_MODES.find(m => m.id === discoverMode)?.sliders || sliders;
+          eps = await rankEpisodes(eps, modeSliders, user?.uid || "admin");
+          eps = eps.slice(0, 30);
+        }
       }
 
       setEpisodes(eps);
@@ -142,24 +155,50 @@ export default function Home() {
           }}>
           🎲 Lucky
         </button>
-
-        <button onClick={() => setShowSliders(!showSliders)}
-          style={{
-            marginLeft: "auto", fontSize: "0.8rem", padding: "0.4rem 0.75rem",
-            borderRadius: "8px", border: "1px solid var(--color-border)",
-            color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
-            background: "none", cursor: "pointer"
-          }}>
-          ⚙️ Feed Settings {showSliders ? "▲" : "▼"}
-        </button>
       </div>
+
+      {/* Discover Mode Pills — only shown on Discover tab */}
+      {activeTab === "discover" && (
+        <div style={{ marginBottom: "0.75rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            {DISCOVER_MODES.map(mode => (
+              <button key={mode.id}
+                onClick={() => {
+                  setDiscoverMode(mode.id);
+                  setSliders(mode.sliders);
+                }}
+                style={{
+                  fontSize: "0.8rem", padding: "0.4rem 0.9rem", borderRadius: "20px",
+                  border: `1px solid ${discoverMode === mode.id ? "var(--color-accent)" : "var(--color-border)"}`,
+                  background: discoverMode === mode.id ? "rgba(245,158,11,0.15)" : "none",
+                  color: discoverMode === mode.id ? "var(--color-accent)" : "var(--color-text-muted)",
+                  cursor: "pointer", fontWeight: discoverMode === mode.id ? 600 : 400,
+                  transition: "all 0.15s ease",
+                }}>
+                {mode.icon} {mode.label}
+              </button>
+            ))}
+            <button onClick={() => setShowSliders(!showSliders)}
+              style={{
+                marginLeft: "auto", fontSize: "0.75rem", padding: "0.4rem 0.75rem",
+                borderRadius: "8px", border: "1px solid var(--color-border)",
+                color: showSliders ? "var(--color-accent)" : "var(--color-text-muted)",
+                background: "none", cursor: "pointer"
+              }}>
+              ⚙️ Advanced {showSliders ? "▲" : "▼"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <TopicFilter selected={selectedTopic} onSelect={(t) => { setSelectedTopic(t); }} />
 
       {showSliders && <SliderPanel sliders={sliders} setSliders={setSliders} activeTab={activeTab} onApply={fetchEpisodes} onClose={() => setShowSliders(false)} />}
 
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
-        {TAB_DESCRIPTIONS[activeTab]}
+        {activeTab === "discover"
+          ? DISCOVER_MODES.find(m => m.id === discoverMode)?.desc
+          : TAB_DESCRIPTIONS[activeTab]}
       </p>
 
       {loading ? (
@@ -186,7 +225,9 @@ export default function Home() {
           <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
             {episodes.length} episode{episodes.length !== 1 ? "s" : ""}
             {selectedTopic && ` tagged "${selectedTopic}"`}
-            {activeTab === "discover" && !selectedTopic && " · ranked by your taste profile"}
+            {activeTab === "discover" && !selectedTopic && (
+              ` · ${DISCOVER_MODES.find(m => m.id === discoverMode)?.icon} ${DISCOVER_MODES.find(m => m.id === discoverMode)?.label}`
+            )}
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {episodes.map(ep => <EpisodeCard key={ep.id} episode={ep} />)}
