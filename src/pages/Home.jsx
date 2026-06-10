@@ -109,8 +109,8 @@ export default function Home() {
           return sB - sA;
         }).slice(0, 30);
 
-      } else {
-        // recommended + wander — both use the scorer, with different sliders
+      } else if (mode === "recommended") {
+        // Recommended — recent 300 episodes scored by curator taste profile
         const snap = await getDocs(query(
           collection(db, "episodes"),
           orderBy("publishedAt", "desc"),
@@ -118,9 +118,23 @@ export default function Home() {
         ));
         eps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
-        const modeConfig = DISCOVER_MODES.find(m => m.id === mode);
-        const activeSliders = mode === "recommended" ? sliders : modeConfig.sliders;
-        eps = await rankEpisodes(eps, activeSliders, user?.uid || "admin", mode);
+        eps = await rankEpisodes(eps, sliders, user?.uid || "admin", "recommended");
+        eps = eps.slice(0, 30);
+
+      } else if (mode === "wander") {
+        // Wander — skip the 100 most recent to avoid overlap with Fresh/Recommended
+        // fetch a wider pool of older episodes and score with inverted taste
+        const snapAll = await getDocs(query(
+          collection(db, "episodes"),
+          orderBy("publishedAt", "desc"),
+          limit(800)
+        ));
+        eps = snapAll.docs.map(d => ({ id: d.id, ...d.data() }));
+        eps = eps.filter(e => e.visibility !== "hidden" && e.visibility !== "removed");
+        // Skip the freshest 100 — those belong to Fresh and Recommended
+        eps = eps.slice(100);
+        const modeConfig = DISCOVER_MODES.find(m => m.id === "wander");
+        eps = await rankEpisodes(eps, modeConfig.sliders, user?.uid || "admin", "wander");
         eps = eps.slice(0, 30);
       }
 
