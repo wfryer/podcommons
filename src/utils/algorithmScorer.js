@@ -35,7 +35,7 @@ export const DISCOVER_MODES = [
     id: "wander",
     label: "Wander",
     icon: "🧭",
-    desc: "Off the beaten path — unfamiliar shows, unexpected topics, outside your usual bubble",
+    desc: "Off the beaten path — unfamiliar shows, unexpected topics, outside the curator's usual bubble",
     showSliders: false,
     sliders: { discoveryVsFamiliar: 98, recentVsTimeless: 50, myTasteVsCommunity: 8 },
   },
