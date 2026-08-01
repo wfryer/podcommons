@@ -342,3 +342,145 @@ exports.manualRSSPoll = onRequest({
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Episode Pruning ────────────────────────────────────────────────────────
+// Protects: first-party shows, episodes with any interaction (like/favorite/
+// queue/comment via the "interactions" collection), episodes with
+// likeCount/favoriteCount/commentCount > 0, admin picks, and anything
+// published within the cutoff window (default 60 days).
+async function pruneEpisodes(dryRun = true, cutoffDays = 60) {
+  const { db, FieldValue } = getDb();
+  const cutoffDate = new Date(Date.now() - cutoffDays * 24 * 60 * 60 * 1000);
+
+  const [episodesSnap, interactionsSnap] = await Promise.all([
+    db.collection("episodes").get(),
+    db.collection("interactions").get(),
+  ]);
+  const interactedEpisodeIds = new Set(interactionsSnap.docs.map(d => d.data().episodeId));
+
+  let keptFirstParty = 0, keptInteracted = 0, keptEngagement = 0, keptFeatured = 0, keptRecent = 0;
+  const toDelete = [];
+  const feedBreakdown = {};
+
+  for (const docSnap of episodesSnap.docs) {
+    const ep = docSnap.data();
+    const publishedAt = ep.publishedAt?.toDate ? ep.publishedAt.toDate() : new Date(ep.publishedAt);
+
+    if (ep.isFirstParty === true) { keptFirstParty++; continue; }
+    if (interactedEpisodeIds.has(docSnap.id)) { keptInteracted++; continue; }
+    if ((ep.likeCount || 0) > 0 || (ep.favoriteCount || 0) > 0 || (ep.commentCount || 0) > 0) { keptEngagement++; continue; }
+    if (ep.featuredByAdmin === true) { keptFeatured++; continue; }
+    if (publishedAt >= cutoffDate) { keptRecent++; continue; }
+
+    toDelete.push({ id: docSnap.id, publishedAt });
+    const feedName = ep.podcastTitle || "Unknown";
+    feedBreakdown[feedName] = (feedBreakdown[feedName] || 0) + 1;
+  }
+
+  const topAffectedFeeds = Object.entries(feedBreakdown)
+    .sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([title, count]) => ({ title, count }));
+
+  const sortedByDate = [...toDelete].sort((a, b) => a.publishedAt - b.publishedAt);
+  const oldestToDelete = sortedByDate[0]?.publishedAt || null;
+  const newestToDelete = sortedByDate[sortedByDate.length - 1]?.publishedAt || null;
+
+  let deletedCount = 0;
+  if (!dryRun && toDelete.length > 0) {
+    for (let i = 0; i < toDelete.length; i += 500) {
+      const batch = db.batch();
+      toDelete.slice(i, i + 500).forEach(item => batch.delete(db.collection("episodes").doc(item.id)));
+      await batch.commit();
+      deletedCount += Math.min(500, toDelete.length - i);
+    }
+    try {
+      await db.collection("siteSettings").doc("stats").set(
+        { episodeCount: episodesSnap.size - deletedCount, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("Stats cache update after prune failed:", err.message);
+    }
+  }
+
+  return {
+    dryRun,
+    totalEpisodes: episodesSnap.size,
+    wouldDelete: toDelete.length,
+    deleted: dryRun ? 0 : deletedCount,
+    protected: {
+      firstParty: keptFirstParty,
+      interacted: keptInteracted,
+      hasEngagement: keptEngagement,
+      featuredByAdmin: keptFeatured,
+      recentWithin60Days: keptRecent,
+    },
+    oldestToDelete,
+    newestToDelete,
+    topAffectedFeeds,
+    cutoffDate,
+  };
+}
+
+// Manual trigger — Admin dashboard Preview/Delete buttons call this.
+// GET ?dryRun=true (default, safe preview) or ?dryRun=false (live delete)
+// Optional ?days=NN to override the 60-day cutoff.
+exports.runPrune = onRequest({
+  timeoutSeconds: 300,
+  memory: "512MiB",
+  cors: true,
+}, async (req, res) => {
+  // Verify Firebase Auth ID token and check admin role (same pattern as manualRSSPoll)
+  const authHeader = req.headers["authorization"] || "";
+  const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!idToken) {
+    res.status(403).json({ error: "Unauthorized: no token" });
+    return;
+  }
+
+  try {
+    const admin = getAdmin();
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const userDoc = await admin.firestore()
+      .collection("users").doc(decoded.uid).get();
+    if (!userDoc.exists || userDoc.data().role !== "admin") {
+      res.status(403).json({ error: "Unauthorized: not admin" });
+      return;
+    }
+  } catch (err) {
+    res.status(403).json({ error: "Unauthorized: invalid token" });
+    return;
+  }
+
+  try {
+    const dryRun = req.query.dryRun !== "false"; // must explicitly pass dryRun=false to delete
+    const cutoffDays = parseInt(req.query.days) || 60;
+    const result = await pruneEpisodes(dryRun, cutoffDays);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("Prune error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Automatic weekly prune — Sundays 3am Eastern. Always a live delete, but the
+// same protections apply, so nothing interacted-with/first-party/recent/
+// featured is ever touched.
+exports.scheduledPrune = onSchedule({
+  schedule: "every sunday 03:00",
+  timeZone: "America/New_York",
+  timeoutSeconds: 300,
+  memory: "512MiB",
+}, async () => {
+  const { db, FieldValue } = getDb();
+  const result = await pruneEpisodes(false, 60);
+  console.log(`Scheduled prune: deleted ${result.deleted} of ${result.totalEpisodes} episodes`);
+  await db.collection("siteSettings").doc("pruneStatus").set({
+    lastPruneAt: FieldValue.serverTimestamp(),
+    lastPruneDeleted: result.deleted,
+    lastPruneTotal: result.totalEpisodes,
+    lastPruneProtected: result.protected,
+    mode: "scheduled",
+  });
+});

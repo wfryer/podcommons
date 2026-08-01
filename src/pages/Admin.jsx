@@ -122,6 +122,158 @@ function PollStatus({ onRefresh }) {
   );
 }
 
+// ─── Prune Control ──────────────────────────────────────────────────────────
+// NOTE: verify this URL against your `firebase deploy --only functions` output
+// for the runPrune function before relying on it — see deploy notes.
+const PRUNE_URL = "https://runprune-wktvb3f5za-uc.a.run.app";
+
+function PruneControl() {
+  const [status, setStatus] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [pruning, setPruning] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => { fetchStatus(); }, []);
+
+  const fetchStatus = async () => {
+    try {
+      const snap = await getDoc(doc(db, "siteSettings", "pruneStatus"));
+      if (snap.exists()) setStatus(snap.data());
+    } catch (err) { console.error(err); }
+  };
+
+  const callPrune = async (dryRun) => {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch(`${PRUNE_URL}?dryRun=${dryRun}`, {
+      headers: { "Authorization": `Bearer ${idToken}` }
+    });
+    return res.json();
+  };
+
+  const handlePreview = async () => {
+    setPreviewing(true);
+    setResult(null);
+    try {
+      const data = await callPrune(true);
+      setPreview(data);
+    } catch (err) {
+      setPreview({ error: err.message });
+    }
+    setPreviewing(false);
+  };
+
+  const handlePruneNow = async () => {
+    if (!preview || preview.error) return;
+    const ok = confirm(
+      `Delete ${preview.wouldDelete} episodes? This cannot be undone.\n\n` +
+      `Protected: ${preview.protected.firstParty} first-party, ${preview.protected.interacted} interacted, ` +
+      `${preview.protected.hasEngagement} liked/commented, ${preview.protected.featuredByAdmin} admin picks, ` +
+      `${preview.protected.recentWithin60Days} recent.`
+    );
+    if (!ok) return;
+    setPruning(true);
+    try {
+      const data = await callPrune(false);
+      setResult(data);
+      setPreview(null);
+      fetchStatus();
+    } catch (err) {
+      setResult({ error: err.message });
+    }
+    setPruning(false);
+  };
+
+  const fmt = (ts) => {
+    if (!ts) return "Never";
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return date.toLocaleString();
+  };
+
+  return (
+    <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "12px", padding: "1.5rem", marginBottom: "1.5rem" }}>
+      <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.1rem", marginBottom: "1rem" }}>
+        🧹 Episode Pruning
+      </h3>
+
+      {status && (
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          {[
+            { label: "Last prune", value: fmt(status.lastPruneAt) },
+            { label: "Last deleted", value: status.lastPruneDeleted ?? "—" },
+            { label: "Total episodes", value: status.lastPruneTotal ?? "—" },
+          ].map(s => (
+            <div key={s.label} style={{ background: "var(--color-bg)", borderRadius: "8px", padding: "0.6rem 1rem", minWidth: 120 }}>
+              <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginBottom: "0.2rem" }}>{s.label}</p>
+              <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--color-text)" }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+        <button onClick={handlePreview} disabled={previewing}
+          className="btn-primary"
+          style={{ opacity: previewing ? 0.7 : 1 }}>
+          {previewing ? "Checking..." : "🔍 Preview Prune (Dry Run)"}
+        </button>
+        {preview && !preview.error && (
+          <button onClick={handlePruneNow} disabled={pruning}
+            style={{ padding: "0.6rem 1.2rem", borderRadius: "8px", cursor: pruning ? "default" : "pointer",
+              background: "rgba(248,113,113,0.1)", border: "1px solid #f87171", color: "#f87171",
+              opacity: pruning ? 0.7 : 1, fontWeight: 600 }}>
+            {pruning ? "Deleting..." : `🗑️ Delete ${preview.wouldDelete} Episodes`}
+          </button>
+        )}
+      </div>
+
+      {preview && !preview.error && (
+        <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
+          background: "rgba(245,158,11,0.08)", border: "1px solid var(--color-accent)" }}>
+          <p style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+            Would delete <strong>{preview.wouldDelete}</strong> of {preview.totalEpisodes} episodes
+            (older than 60 days, no engagement).
+          </p>
+          <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+            Protected: {preview.protected.firstParty} first-party · {preview.protected.interacted} interacted ·{" "}
+            {preview.protected.hasEngagement} liked/commented · {preview.protected.featuredByAdmin} admin picks ·{" "}
+            {preview.protected.recentWithin60Days} recent
+          </p>
+          {preview.topAffectedFeeds?.length > 0 && (
+            <div style={{ marginTop: "0.5rem" }}>
+              <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginBottom: "0.3rem" }}>Most affected feeds:</p>
+              {preview.topAffectedFeeds.map(f => (
+                <p key={f.title} style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+                  {f.title}: {f.count}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
+          background: result.error ? "rgba(248,113,113,0.1)" : "rgba(74,222,128,0.1)",
+          border: `1px solid ${result.error ? "#f87171" : "#4ade80"}` }}>
+          {result.error ? (
+            <p style={{ color: "#f87171", fontSize: "0.85rem" }}>Error: {result.error}</p>
+          ) : (
+            <p style={{ color: "#4ade80", fontSize: "0.85rem" }}>
+              ✓ Pruned! Deleted {result.deleted} episodes. {result.totalEpisodes - result.deleted} remain.
+            </p>
+          )}
+        </div>
+      )}
+
+      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.75rem" }}>
+        Protects: your own shows, episodes with likes/favorites/comments/queue saves, admin picks, and anything
+        published in the last 60 days. An automatic prune also runs every Sunday at 3am Eastern.
+      </p>
+    </div>
+  );
+}
+
 // ─── Moderation Queue ────────────────────────────────────────────────────────
 function ModerationQueue() {
   const [items, setItems] = useState([]);
@@ -666,6 +818,7 @@ export default function Admin() {
       {activeTab === "system" && (
         <div>
           <PollStatus onRefresh={fetchCounts} />
+          <PruneControl />
           <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "12px", padding: "1.5rem" }}>
             <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.1rem", marginBottom: "1rem" }}>
               🔑 Registration Gate
