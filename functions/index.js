@@ -449,7 +449,8 @@ exports.runPrune = onRequest({
       return;
     }
   } catch (err) {
-    res.status(403).json({ error: "Unauthorized: invalid token" });
+    console.error("runPrune auth error:", err.message);
+    res.status(403).json({ error: `Unauthorized: ${err.message}` });
     return;
   }
 

@@ -142,7 +142,7 @@ function PruneControl() {
   };
 
   const callPrune = async (dryRun) => {
-    const idToken = await auth.currentUser.getIdToken();
+    const idToken = await auth.currentUser.getIdToken(true); // force-refresh, avoid stale cached token
     const res = await fetch(`${PRUNE_URL}?dryRun=${dryRun}`, {
       headers: { "Authorization": `Bearer ${idToken}` }
     });
