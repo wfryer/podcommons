@@ -66,7 +66,13 @@ Rules:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 150 },
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 400,
+          // gemini-2.5-flash is a thinking model — without this, reasoning
+          // tokens consume the whole budget and the JSON comes back empty.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
       signal: AbortSignal.timeout(12000),
     }
@@ -78,7 +84,16 @@ Rules:
   }
 
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  // Empty response means the model returned nothing usable — surface it as an
+  // error instead of silently saving an episode with no topics.
+  if (!text.trim()) {
+    throw new Error(
+      `Empty Gemini response (finishReason=${data.candidates?.[0]?.finishReason || "?"}, ` +
+      `thinkingTokens=${data.usageMetadata?.thoughtsTokenCount ?? 0})`
+    );
+  }
   
   // Robust JSON extraction - handle truncated/malformed responses
   let parsed = {};
@@ -101,7 +116,9 @@ Rules:
   }
 
   return {
-    topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+    topics: (Array.isArray(parsed.topics) ? parsed.topics : [])
+      .filter((t) => TOPICS.includes(t))
+      .slice(0, 3),
     tasteScore: Math.min(1, Math.max(0, Number(parsed.tasteScore) || 0.5)),
     tasteReason: parsed.tasteReason || "",
   };
