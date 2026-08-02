@@ -123,9 +123,7 @@ function PollStatus({ onRefresh }) {
 }
 
 // ─── Prune Control ──────────────────────────────────────────────────────────
-// NOTE: verify this URL against your `firebase deploy --only functions` output
-// for the runPrune function before relying on it — see deploy notes.
-const PRUNE_URL = "https://runprune-wktvb3f5za-uc.a.run.app";
+const PRUNE_URL = "https://us-central1-podcommons-41064.cloudfunctions.net/runPrune";
 
 function PruneControl() {
   const [status, setStatus] = useState(null);
