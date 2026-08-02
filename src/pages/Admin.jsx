@@ -146,7 +146,16 @@ function PruneControl() {
     const res = await fetch(`${PRUNE_URL}?dryRun=${dryRun}`, {
       headers: { "Authorization": `Bearer ${idToken}` }
     });
-    return res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`Server returned status ${res.status} (non-JSON response)`);
+    }
+    if (!res.ok && !data.error) {
+      data.error = `Request failed with status ${res.status}`;
+    }
+    return data;
   };
 
   const handlePreview = async () => {
@@ -224,6 +233,13 @@ function PruneControl() {
           </button>
         )}
       </div>
+
+      {preview && preview.error && (
+        <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
+          background: "rgba(248,113,113,0.1)", border: "1px solid #f87171" }}>
+          <p style={{ color: "#f87171", fontSize: "0.85rem" }}>Preview failed: {preview.error}</p>
+        </div>
+      )}
 
       {preview && !preview.error && (
         <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
