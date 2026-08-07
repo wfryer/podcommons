@@ -123,7 +123,11 @@ function PollStatus({ onRefresh }) {
 }
 
 // ─── Prune Control ──────────────────────────────────────────────────────────
-const PRUNE_URL = "https://us-central1-podcommons-41064.cloudfunctions.net/runPrune";
+// NOTE: use the direct Cloud Run (*.a.run.app) URL, NOT the *.cloudfunctions.net
+// one. The cloudfunctions.net gateway intercepts the Authorization header for
+// its own IAM check, so the Firebase ID token never reaches verifyIdToken().
+// This matches the pattern used by the working manualRSSPoll button above.
+const PRUNE_URL = "https://runprune-wktvb3f5za-uc.a.run.app";
 
 function PruneControl() {
   const [status, setStatus] = useState(null);
@@ -588,6 +592,197 @@ function UserManagement() {
 }
 
 // ─── Feed Management ─────────────────────────────────────────────────────────
+// ─── Smart Feed Add ─────────────────────────────────────────────────────────
+// NOTE: confirm this URL against the deploy output for resolveFeed.
+const RESOLVE_URL = "https://resolvefeed-wktvb3f5za-uc.a.run.app";
+const POLL_URL = "https://manualrsspoll-wktvb3f5za-uc.a.run.app";
+
+function AddFeedPanel({ onAdded }) {
+  const [input, setInput] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [result, setResult] = useState(null);
+  const [addingUrl, setAddingUrl] = useState(null);
+  const [addStatus, setAddStatus] = useState({}); // feedUrl → { status, message }
+
+  const authedFetch = async (url) => {
+    const idToken = await auth.currentUser.getIdToken(true);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
+    let data;
+    try { data = await res.json(); }
+    catch { throw new Error(`Server returned status ${res.status}`); }
+    if (!res.ok) throw new Error(data.error || `Request failed with status ${res.status}`);
+    return data;
+  };
+
+  const handleFind = async () => {
+    const q = input.trim();
+    if (!q) return;
+    setSearching(true);
+    setResult(null);
+    setAddStatus({});
+    try {
+      const data = await authedFetch(`${RESOLVE_URL}?input=${encodeURIComponent(q)}`);
+      setResult(data);
+    } catch (err) {
+      setResult({ error: err.message });
+    }
+    setSearching(false);
+  };
+
+  const handleAdd = async (cand) => {
+    setAddingUrl(cand.feedUrl);
+    try {
+      // Verify the feed is alive + get canonical metadata + dup/block status
+      const v = await authedFetch(`${RESOLVE_URL}?verifyUrl=${encodeURIComponent(cand.feedUrl)}`);
+
+      if (v.alreadyAdded) {
+        setAddStatus(p => ({ ...p, [cand.feedUrl]: { status: "dup", message: "Already in your archive" } }));
+        setAddingUrl(null);
+        return;
+      }
+      if (v.previouslyBlocked) {
+        const ok = confirm(`"${v.title}" was previously deleted from PodCommons. Add it back anyway?`);
+        if (!ok) { setAddingUrl(null); return; }
+      }
+
+      const ref = await addDoc(collection(db, "podcasts"), {
+        title: v.title || cand.title,
+        feedUrl: cand.feedUrl,
+        artworkUrl: v.artworkUrl || cand.artworkUrl || "",
+        description: v.description || "",
+        author: v.author || cand.author || "",
+        visibility: "visible",
+        isFirstParty: false,
+        addedAt: Timestamp.now(),
+        addedVia: result?.method || "search",
+      });
+
+      setAddStatus(p => ({ ...p, [cand.feedUrl]: {
+        status: "ok",
+        message: `Added! Pulling episodes now...`,
+      } }));
+      onAdded?.();
+
+      // Poll just this feed immediately so episodes show up in seconds
+      try {
+        const pollRes = await authedFetch(`${POLL_URL}?feedId=${ref.id}`);
+        setAddStatus(p => ({ ...p, [cand.feedUrl]: {
+          status: "ok",
+          message: `Added — ${pollRes.added ?? 0} episode${pollRes.added === 1 ? "" : "s"} ingested and tagged`,
+        } }));
+      } catch {
+        setAddStatus(p => ({ ...p, [cand.feedUrl]: {
+          status: "ok",
+          message: "Added — episodes will arrive on the next scheduled poll",
+        } }));
+      }
+    } catch (err) {
+      setAddStatus(p => ({ ...p, [cand.feedUrl]: { status: "err", message: err.message } }));
+    }
+    setAddingUrl(null);
+  };
+
+  const methodLabel = {
+    search: "🔎 Directory search",
+    apple: "🍎 Resolved from Apple Podcasts link",
+    spotify: "🟢 Matched from Spotify link via podcast directory",
+    pocketcasts: "🔴 Matched from Pocket Casts link via podcast directory",
+    rss: "📡 Direct RSS feed — verified",
+  };
+
+  return (
+    <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)",
+      borderRadius: "12px", padding: "1.5rem", marginBottom: "1.5rem" }}>
+      <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.1rem", marginBottom: "0.35rem" }}>
+        ➕ Add a Podcast
+      </h3>
+      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.85rem" }}>
+        Paste anything: a show or creator name, an Apple Podcasts / Spotify / Pocket Casts link
+        (show or episode), or a direct RSS URL.
+      </p>
+
+      <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleFind(); }}
+          placeholder='e.g. "99% Invisible", or an Apple/Spotify episode link, or an RSS URL'
+          style={{ flex: 1, minWidth: 240 }}
+        />
+        <button onClick={handleFind} disabled={searching || !input.trim()}
+          className="btn-primary" style={{ opacity: searching ? 0.7 : 1 }}>
+          {searching ? "Finding..." : "Find Feed"}
+        </button>
+      </div>
+
+      {result?.error && (
+        <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
+          background: "rgba(248,113,113,0.1)", border: "1px solid #f87171" }}>
+          <p style={{ color: "#f87171", fontSize: "0.85rem" }}>{result.error}</p>
+        </div>
+      )}
+
+      {result?.candidates && (
+        <div style={{ marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", marginBottom: "0.6rem" }}>
+            {methodLabel[result.method] || "Results"}
+            {result.sourceTitle && <> · found title: <em>"{result.sourceTitle}"</em></>}
+            {" "}· {result.candidates.length} match{result.candidates.length === 1 ? "" : "es"}
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {result.candidates.map(cand => {
+              const status = addStatus[cand.feedUrl];
+              return (
+                <div key={cand.feedUrl} style={{ background: "var(--color-bg)",
+                  border: "1px solid var(--color-border)", borderRadius: "8px", padding: "0.75rem",
+                  display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  {cand.artworkUrl && (
+                    <img src={cand.artworkUrl} alt=""
+                      style={{ width: 48, height: 48, borderRadius: "8px", objectFit: "cover", flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>{cand.title}</p>
+                    <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+                      {cand.author}
+                      {cand.genre && ` · ${cand.genre}`}
+                      {cand.episodeCount && ` · ${cand.episodeCount} episodes`}
+                    </p>
+                    {cand.matchedEpisode && (
+                      <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                        matched episode: "{cand.matchedEpisode}"
+                      </p>
+                    )}
+                    <p style={{ fontSize: "0.65rem", color: "var(--color-text-muted)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 420 }}>
+                      {cand.feedUrl}
+                    </p>
+                    {status && (
+                      <p style={{ fontSize: "0.75rem", marginTop: "0.25rem",
+                        color: status.status === "ok" ? "#4ade80" : status.status === "dup" ? "var(--color-accent)" : "#f87171" }}>
+                        {status.status === "ok" ? "✓ " : status.status === "dup" ? "◉ " : "✗ "}{status.message}
+                      </p>
+                    )}
+                  </div>
+                  {(!status || status.status === "err") && (
+                    <button onClick={() => handleAdd(cand)} disabled={addingUrl === cand.feedUrl}
+                      style={{ fontSize: "0.78rem", padding: "0.4rem 0.9rem", borderRadius: "8px",
+                        background: "rgba(74,222,128,0.1)", border: "1px solid #4ade80", color: "#4ade80",
+                        cursor: addingUrl === cand.feedUrl ? "default" : "pointer", fontWeight: 600,
+                        opacity: addingUrl === cand.feedUrl ? 0.6 : 1, flexShrink: 0 }}>
+                      {addingUrl === cand.feedUrl ? "Verifying..." : "Add"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedManagement() {
   const [feeds, setFeeds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -633,6 +828,7 @@ function FeedManagement() {
 
   return (
     <div>
+      <AddFeedPanel onAdded={fetchFeeds} />
       <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search feeds..." style={{ flex: 1, minWidth: 200 }} />

@@ -176,16 +176,23 @@ function getChannelArtwork(xml) {
   return itunes?.[1] || img?.[1] || "";
 }
 
-async function pollFeeds(limitCount = 0, geminiKey = null) {
+async function pollFeeds(limitCount = 0, geminiKey = null, onlyFeedId = null) {
   const { db, FieldValue } = getDb();
   const startTime = Date.now();
   let processed = 0, added = 0, errors = 0, analyzed = 0;
   const errorLog = [];
 
-  let podQuery = db.collection("podcasts").where("visibility", "==", "visible");
-  if (limitCount > 0) podQuery = podQuery.limit(limitCount);
-  const podSnap = await podQuery.get();
-  const podcasts = podSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let podcasts;
+  if (onlyFeedId) {
+    // Poll a single feed (used right after adding a new podcast)
+    const one = await db.collection("podcasts").doc(onlyFeedId).get();
+    podcasts = one.exists ? [{ id: one.id, ...one.data() }] : [];
+  } else {
+    let podQuery = db.collection("podcasts").where("visibility", "==", "visible");
+    if (limitCount > 0) podQuery = podQuery.limit(limitCount);
+    const podSnap = await podQuery.get();
+    podcasts = podSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
 
   console.log(`Polling ${podcasts.length} feeds, Gemini: ${geminiKey ? "enabled" : "disabled"}`);
 
@@ -349,10 +356,11 @@ exports.manualRSSPoll = onRequest({
 
   try {
     const limit = parseInt(req.query.limit) || 0;
+    const feedId = req.query.feedId || null;
     const useAI = req.query.ai !== "false";
     const key = useAI ? process.env.GEMINI_API_KEY : null;
-    console.log(`Manual poll: Gemini=${key ? key.slice(0, 8) + "..." : "disabled"}`);
-    const result = await pollFeeds(limit, key);
+    console.log(`Manual poll: Gemini=${key ? key.slice(0, 8) + "..." : "disabled"}${feedId ? `, single feed ${feedId}` : ""}`);
+    const result = await pollFeeds(limit, key, feedId);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("Manual poll error:", err);
@@ -501,4 +509,267 @@ exports.scheduledPrune = onSchedule({
     lastPruneProtected: result.protected,
     mode: "scheduled",
   });
+});
+
+// ─── Universal Feed Resolution (smart add) ──────────────────────────────────
+// Takes ANY input — a show/creator name, an Apple Podcasts link, a Spotify
+// link, a Pocket Casts link, or a raw RSS URL — and resolves it to one or
+// more candidate RSS feeds the admin can add.
+//
+// Key facts this relies on:
+//  - Apple's iTunes Search/Lookup API is free, keyless, and returns feedUrl.
+//    It is the de facto public registry of podcast RSS feeds.
+//  - Apple Podcasts URLs contain the show ID (…/id123456789), even on
+//    episode links, so those resolve to an exact feed via Lookup.
+//  - Spotify never exposes RSS, but its public oEmbed endpoint returns the
+//    title without auth — which we then match through Apple's directory.
+//  - Pocket Casts pages expose the show title via og:title.
+
+const RESOLVER_UA = "PodCommons/1.0 (+https://podcasts.wesfryer.com)";
+
+function decodeHtmlEntities(s = "") {
+  return s
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
+}
+
+async function fetchTextUA(url, timeoutMs = 12000) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": RESOLVER_UA, "Accept": "*/*" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return await res.text();
+}
+
+async function fetchJsonUA(url, timeoutMs = 12000) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": RESOLVER_UA, "Accept": "application/json" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return await res.json();
+}
+
+// Parse channel-level metadata (title, author, artwork, description) from RSS
+function parseFeedChannelMeta(xml) {
+  const head = xml.split(/<item[\s>]/i)[0]; // everything before the first episode
+  const get = (tag) => {
+    const m = head.match(new RegExp(
+      `<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`, "i"
+    ));
+    return m ? (m[1] || m[2] || "").trim() : "";
+  };
+  return {
+    title: decodeHtmlEntities(get("title")).slice(0, 200),
+    author: decodeHtmlEntities(get("itunes:author")).slice(0, 120),
+    description: decodeHtmlEntities(get("description") || get("itunes:summary"))
+      .replace(/<[^>]*>/g, "").slice(0, 500),
+    artworkUrl: getChannelArtwork(xml),
+  };
+}
+
+// Fetch a candidate feed URL, confirm it's real RSS, and return canonical
+// metadata plus duplicate/blocked status from Firestore.
+async function verifyFeedUrl(url) {
+  const { db } = getDb();
+  const xml = await fetchTextUA(url);
+  const headSlice = xml.slice(0, 3000);
+
+  if (!/<rss[\s>]|<channel[\s>]/i.test(headSlice)) {
+    if (/<feed[\s>]/i.test(headSlice)) {
+      throw new Error("That URL is an Atom feed — PodCommons currently supports RSS podcast feeds");
+    }
+    throw new Error("That URL responded, but did not return an RSS feed");
+  }
+
+  const meta = parseFeedChannelMeta(xml);
+  const latest = parseRSSItems(xml, 1)[0] || null;
+
+  const [dupSnap, blockedSnap] = await Promise.all([
+    db.collection("podcasts").where("feedUrl", "==", url).limit(1).get(),
+    db.collection("blockedFeeds").where("feedUrl", "==", url).limit(1).get(),
+  ]);
+
+  return {
+    success: true,
+    verified: true,
+    feedUrl: url,
+    ...meta,
+    latestEpisode: latest ? { title: latest.title, pubDate: latest.pubDate } : null,
+    alreadyAdded: !dupSnap.empty,
+    previouslyBlocked: !blockedSnap.empty,
+  };
+}
+
+const mapItunesPodcast = (r) => ({
+  title: decodeHtmlEntities(r.collectionName || r.trackName || ""),
+  author: decodeHtmlEntities(r.artistName || ""),
+  feedUrl: r.feedUrl,
+  artworkUrl: r.artworkUrl600 || r.artworkUrl100 || "",
+  genre: r.primaryGenreName || "",
+  episodeCount: r.trackCount || null,
+  verified: false,
+});
+
+async function itunesSearchPodcasts(term) {
+  const data = await fetchJsonUA(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=podcast&entity=podcast&limit=8`
+  );
+  return (data.results || []).filter((r) => r.feedUrl).map(mapItunesPodcast);
+}
+
+// Episode-level search — used for Spotify/Pocket Casts EPISODE links, where
+// the only title we can extract is the episode's, not the show's.
+async function itunesSearchEpisodes(term) {
+  const data = await fetchJsonUA(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=podcast&entity=podcastEpisode&limit=8`
+  );
+  const seen = new Set();
+  const out = [];
+  for (const r of data.results || []) {
+    if (!r.feedUrl || seen.has(r.feedUrl)) continue;
+    seen.add(r.feedUrl);
+    out.push({
+      title: decodeHtmlEntities(r.collectionName || ""),
+      author: decodeHtmlEntities(r.artistName || ""),
+      feedUrl: r.feedUrl,
+      artworkUrl: r.artworkUrl600 || r.artworkUrl160 || r.artworkUrl100 || "",
+      genre: (r.genres && r.genres[0] && (r.genres[0].name || r.genres[0])) || "",
+      matchedEpisode: decodeHtmlEntities(r.trackName || ""),
+      verified: false,
+    });
+  }
+  return out;
+}
+
+async function resolveAnyInput(input) {
+  const isUrl = /^https?:\/\//i.test(input);
+
+  // Plain text → directory search
+  if (!isUrl) {
+    const candidates = await itunesSearchPodcasts(input);
+    if (!candidates.length) {
+      throw new Error(`No podcasts found matching "${input}" — try the exact show name, or paste a link`);
+    }
+    return { method: "search", candidates };
+  }
+
+  const u = new URL(input);
+  const host = u.hostname.replace(/^www\./, "");
+
+  // Apple Podcasts — show ID is in the URL, even on episode links
+  if (host === "podcasts.apple.com" || host === "itunes.apple.com") {
+    const idMatch = u.pathname.match(/id(\d+)/);
+    if (!idMatch) throw new Error("Couldn't find a show ID in that Apple Podcasts link");
+    const data = await fetchJsonUA(`https://itunes.apple.com/lookup?id=${idMatch[1]}&entity=podcast`);
+    const candidates = (data.results || []).filter((r) => r.feedUrl).map(mapItunesPodcast);
+    if (!candidates.length) throw new Error("Apple's lookup returned no RSS feed for that show");
+    return { method: "apple", candidates };
+  }
+
+  // Spotify — oEmbed gives us the title with no auth; match via Apple's directory
+  if (host.endsWith("spotify.com")) {
+    const o = await fetchJsonUA(`https://open.spotify.com/oembed?url=${encodeURIComponent(input)}`);
+    const title = decodeHtmlEntities((o.title || "").trim());
+    if (!title) throw new Error("Couldn't read a title from that Spotify link");
+    const isEpisode = /\/episode\//.test(u.pathname);
+    let candidates = isEpisode ? await itunesSearchEpisodes(title) : [];
+    if (!candidates.length) candidates = await itunesSearchPodcasts(title);
+    if (!candidates.length && isEpisode) {
+      throw new Error(`Found the episode "${title}" on Spotify, but couldn't match it to an RSS feed — try searching the show's name instead`);
+    }
+    if (!candidates.length) {
+      throw new Error(`Found "${title}" on Spotify but no matching RSS feed in the podcast directory (it may be a Spotify exclusive)`);
+    }
+    return { method: "spotify", sourceTitle: title, candidates };
+  }
+
+  // Pocket Casts (and similar) — read the page title, match via directory
+  if (host === "pca.st" || host.endsWith("pocketcasts.com")) {
+    const html = await fetchTextUA(input);
+    const og = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<title>([^<]+)<\/title>/i);
+    const title = decodeHtmlEntities((og?.[1] || "").trim());
+    if (!title) throw new Error("Couldn't read a show title from that Pocket Casts page");
+    let candidates = await itunesSearchPodcasts(title);
+    if (!candidates.length && title.includes(" - ")) {
+      candidates = await itunesSearchPodcasts(title.split(" - ").pop().trim());
+    }
+    if (!candidates.length) candidates = await itunesSearchEpisodes(title);
+    if (!candidates.length) {
+      throw new Error(`Found "${title}" but no matching feed in the podcast directory`);
+    }
+    return { method: "pocketcasts", sourceTitle: title, candidates };
+  }
+
+  // Anything else → assume it's a direct RSS URL and verify it
+  const v = await verifyFeedUrl(input);
+  return {
+    method: "rss",
+    candidates: [{
+      title: v.title || input,
+      author: v.author || "",
+      feedUrl: input,
+      artworkUrl: v.artworkUrl || "",
+      description: v.description || "",
+      latestEpisode: v.latestEpisode,
+      verified: true,
+      alreadyAdded: v.alreadyAdded,
+      previouslyBlocked: v.previouslyBlocked,
+    }],
+  };
+}
+
+// HTTP endpoint — admin-only, same auth pattern as runPrune/manualRSSPoll.
+//   ?input=<anything>       → resolve to candidate feeds
+//   ?verifyUrl=<feed url>   → verify one feed + return canonical metadata
+exports.resolveFeed = onRequest({
+  timeoutSeconds: 60,
+  memory: "512MiB",
+  cors: true,
+}, async (req, res) => {
+  const authHeader = req.headers["authorization"] || "";
+  const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!idToken) {
+    res.status(403).json({ error: "Unauthorized: no token" });
+    return;
+  }
+
+  try {
+    const admin = getAdmin();
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const userDoc = await admin.firestore()
+      .collection("users").doc(decoded.uid).get();
+    if (!userDoc.exists || userDoc.data().role !== "admin") {
+      res.status(403).json({ error: "Unauthorized: not admin" });
+      return;
+    }
+  } catch (err) {
+    console.error("resolveFeed auth error:", err.message);
+    res.status(403).json({ error: `Unauthorized: ${err.message}` });
+    return;
+  }
+
+  try {
+    const verifyUrl = (req.query.verifyUrl || "").trim();
+    if (verifyUrl) {
+      res.json(await verifyFeedUrl(verifyUrl));
+      return;
+    }
+    const input = (req.query.input || "").trim();
+    if (!input) {
+      res.status(400).json({ error: "Missing input" });
+      return;
+    }
+    const result = await resolveAnyInput(input);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("resolveFeed error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
